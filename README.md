@@ -127,11 +127,21 @@ The pod is an **ESP32** with a temperature/humidity sensor, a gas sensor and a *
 
 All GNDs connect together. The LCD's I2C address is found automatically (it scans 0x20–0x27 and 0x38–0x3F; Serial Monitor prints which one). If the screen lights up but shows nothing, turn the small blue contrast screw on the backpack.
 
-### Flash it
-1. In the Arduino IDE, install the board package **esp32 by Espressif**, then these libraries: **DHT sensor library**, **Adafruit Unified Sensor**, **LiquidCrystal I2C** (Frank de Brabander).
-2. Open `firmware/eat_me_first_pod/eat_me_first_pod.ino` and fill in `WIFI_SSID`, `WIFI_PASSWORD` (2.4 GHz WiFi) and `SERVER_URL` (your Render link + `/api/pod/reading`).
-3. Optional but recommended: set the same secret `POD_KEY` in the sketch **and** in Render → Environment.
-4. Board: **ESP32 Dev Module** → Upload → Serial Monitor at 115200.
+### Flash it (new ESP32)
+1. In the Arduino IDE, install the board package **esp32 by Espressif**, then these libraries: **DHT sensor library**, **Adafruit Unified Sensor**, **LiquidCrystal I2C** (Frank de Brabander), **WiFiManager** (tzapu).
+2. Open `firmware/eat_me_first_pod/eat_me_first_pod.ino`. `SERVER_URL` is already your Render link. Optionally set `POD_KEY` here **and** in Render → Environment.
+3. Tools → Board: **ESP32 Dev Module**. Tools → Partition Scheme: **Huge APP (3MB No OTA)**, which gives the program room to grow. Pick the port, then Upload. If it says "Connecting...____", hold the **BOOT** button until the upload starts.
+
+Or from a terminal with `arduino-cli`:
+```
+arduino-cli compile --upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32:PartitionScheme=huge_app firmware/eat_me_first_pod
+```
+
+### Connect it to WiFi (from your phone, no password in the code)
+1. Power the pod. The LCD says **Join WiFi from / EatMeFirst-Setup** and the RGB LED turns purple.
+2. On your phone, join the WiFi network **EatMeFirst-Setup**. A setup page opens; if it doesn't, browse to 192.168.4.1.
+3. Tap **Configure WiFi**, pick your network (2.4 GHz only, and phone hotspots work), type the password, and Save.
+4. The pod remembers it. To switch networks later, hold **BOOT** while pressing **EN/RESET**, and keep holding BOOT for 3 s.
 
 ### What you'll see
 - **LCD:** "Eat Me First / WiFi connecting" → "WiFi connected", then screens cycling every 3 s: where the pod is and its temperature, **EAT FIRST** + the most urgent item, any alert (the backlight flashes), and the weekly score.

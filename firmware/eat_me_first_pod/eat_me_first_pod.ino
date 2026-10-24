@@ -6,13 +6,17 @@
 // If WiFi or the app is down, the LCD shows the pod's own readings instead.
 // Serial Monitor at 115200 baud shows everything that happens.
 //
+// WiFi setup (no password in the code): on first start the pod makes a hotspot "EatMeFirst-Setup".
+// Join it from your phone, pick your WiFi, type the password. The pod remembers it.
+// To switch WiFi later: hold the BOOT button while pressing EN/RESET (keep BOOT held ~3 s after).
+//
 // Libraries (Arduino IDE -> Library Manager):
-//   "DHT sensor library" + "Adafruit Unified Sensor" (Adafruit), "LiquidCrystal I2C" (Frank de Brabander)
+//   "DHT sensor library" + "Adafruit Unified Sensor" (Adafruit), "LiquidCrystal I2C" (Frank de Brabander),
+//   "WiFiManager" (tzapu)
 //   DS18B20 fallback only: "OneWire" + "DallasTemperature"
 
 // ======== SETTINGS ========
-const char* WIFI_SSID     = "YOUR_WIFI_NAME";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// (WiFi is set up from your phone - see above)
 // Your app's address + /api/pod/reading
 const char* SERVER_URL    = "https://eat-me-first-xjwe.onrender.com/api/pod/reading";
 // Must match POD_KEY on the server (Render -> Environment). Leave "" if the server has no POD_KEY.
@@ -23,6 +27,7 @@ const char* POD_KEY       = "";
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiManager.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Wire.h>
@@ -37,6 +42,8 @@ const char* POD_KEY       = "";
 const int TEMP_PIN = 4;    // DHT22 / DS18B20 data
 const int GAS_PIN  = 34;   // MQ-3 AO via voltage divider (ADC1 - works while WiFi is on)
 const int LED_PIN  = 2;    // onboard LED on most ESP32 dev boards
+const int SETUP_BUTTON_PIN = 0;    // the BOOT button: hold it at start-up to set up WiFi again
+const char* SETUP_HOTSPOT = "EatMeFirst-Setup";
 // LCD uses the ESP32's default I2C pins: SDA = GPIO 21, SCL = GPIO 22
 
 // RGB status LED (each colour leg through a 220 ohm resistor)
@@ -157,24 +164,49 @@ void setScreensFromApp(const String& body) {
 }
 
 // ---------- Sensors + WiFi ----------
+// First time (or after a WiFi reset): open the "EatMeFirst-Setup" hotspot until WiFi is configured
+void setupWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFiManager wm;
+  pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
+  delay(50);
+  if (digitalRead(SETUP_BUTTON_PIN) == LOW) {          // BOOT held at start-up -> forget the saved WiFi
+    unsigned long held = millis();
+    show("Keep holding", "to reset WiFi...");
+    while (digitalRead(SETUP_BUTTON_PIN) == LOW && millis() - held < 3000) delay(10);
+    if (millis() - held >= 3000) {
+      wm.resetSettings();
+      show("WiFi forgotten", "Starting setup");
+      delay(1500);
+    }
+  }
+  wm.setConfigPortalTimeout(300);              // give up after 5 min, keep working offline, retry later
+  wm.setAPCallback([](WiFiManager*) {
+    Serial.printf("Setup hotspot open: join \"%s\" from your phone, then pick your WiFi\n", SETUP_HOTSPOT);
+    show("Join WiFi from", SETUP_HOTSPOT);
+    rgb(160, 0, 160);                           // purple = waiting for WiFi setup
+  });
+  show("Eat Me First", "WiFi connecting");
+  if (wm.autoConnect(SETUP_HOTSPOT)) {
+    Serial.printf("WiFi OK (%s), IP %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    show("WiFi connected", WiFi.SSID());
+  } else {
+    Serial.println("WiFi setup timed out - running offline; restart the pod to try again.");
+    show("No WiFi set up", "Restart to retry");
+  }
+}
+
+// Later drops: quietly reconnect to the saved network
 void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
-  show("Eat Me First", "WiFi connecting");
-  Serial.printf("Connecting to WiFi \"%s\"", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  static unsigned long lastTry = 0;
+  if (lastTry && millis() - lastTry < 15000) return;   // don't hammer the router
+  lastTry = millis();
+  Serial.println("WiFi lost - reconnecting...");
+  WiFi.reconnect();
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
-    delay(500);
-    Serial.print(".");
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nWiFi OK, IP %s\n", WiFi.localIP().toString().c_str());
-    show("WiFi connected", WiFi.localIP().toString());
-  } else {
-    Serial.println("\nWiFi failed - check name/password (2.4 GHz networks only). Retrying soon.");
-    show("WiFi failed", "Check name/pass");
-  }
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 8000) delay(250);
+  Serial.println(WiFi.status() == WL_CONNECTED ? "WiFi back" : "Still no WiFi");
 }
 
 int readGasRaw() {
@@ -234,7 +266,7 @@ void setup() {
   rgb(0, 0, 160);
   setupLcd();
   show("Eat Me First", "Starting...");
-  connectWiFi();
+  setupWiFi();
   setLocalScreens("Connecting app");
 }
 

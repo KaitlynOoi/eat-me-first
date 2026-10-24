@@ -1,5 +1,7 @@
 import "dotenv/config";
 import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
 import express from "express";
 import * as store from "./store.js";
 import * as engine from "./engine.js";
@@ -12,6 +14,15 @@ import { lookupBarcode, classify } from "./barcode.js";
 const PORT = Number(process.env.PORT || 3000);
 const app = express();
 app.use(express.json({ limit: "12mb" })); // photos arrive as base64
+// Serve the page with ?v=<this deploy> on its scripts and styles, so phones (and home-screen apps)
+// always load the newest version instead of a cached old one
+const BUILD = Date.now().toString(36);
+const indexHtml = fs.readFileSync(path.resolve("public/index.html"), "utf8")
+  .replace(/(src|href)="((?:vendor\/)?[\w./-]+\.(?:js|css))"/g, `$1="$2?v=${BUILD}"`);
+app.get(["/", "/index.html"], (req, res) => {
+  res.set("Cache-Control", "no-cache");
+  res.type("html").send(indexHtml);
+});
 app.use(express.static("public"));
 
 // Wrap async handlers so errors become JSON instead of crashing
