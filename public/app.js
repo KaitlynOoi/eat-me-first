@@ -156,6 +156,9 @@ function renderLcd() {
   const [top, bottom] = screens[lcdIndex];
   $("lcd").textContent = `${top.padEnd(16)}\n${(bottom || "").padEnd(16)}`;
   $("lcd").classList.toggle("alert", top.startsWith("!!"));
+  const level = state.pod.lcd.level;
+  $("ledDot").className = `led ${level}${state.pod.lcd.alert && level === "red" ? " blink" : ""}`;
+  $("ledText").textContent = { green: "LED green: all good", yellow: "LED yellow: eat something soon", red: "LED red: act now" }[level];
 }
 setInterval(() => { lcdIndex++; renderLcd(); }, 3000);
 

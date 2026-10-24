@@ -26,12 +26,12 @@ const route = (fn) => async (req, res) => {
 app.get("/api/state", route(() => ({ ...engine.snapshot(), sim: { scenario: sim.getScenario(), scenarios: sim.SCENARIOS }, photoScan: claudeEnabled() })));
 
 
-// What the pod's LCD should show, as plain text so the ESP32 needs no JSON library:
-// first line "ALERT" or "OK", then 2 lines per screen. The pod gets this as the reply
-// to its reading (POST /api/pod/reading?lcd=1); GET works too for testing.
+// What the pod's LCD and LED should show, as plain text so the ESP32 needs no JSON library:
+// first line "<LED colour> <ALERT|OK>" (e.g. "RED ALERT", "GREEN OK"), then 2 lines per screen.
+// The pod gets this as the reply to its reading (POST /api/pod/reading?lcd=1); GET works too for testing.
 function lcdReply(res) {
-  const { screens, alert } = engine.podScreens();
-  res.type("text/plain").send([alert ? "ALERT" : "OK", ...screens.flat()].join("\n"));
+  const { screens, alert, level } = engine.podScreens();
+  res.type("text/plain").send([`${level.toUpperCase()} ${alert ? "ALERT" : "OK"}`, ...screens.flat()].join("\n"));
 }
 app.get("/api/pod/screen.txt", (req, res) => lcdReply(res));
 app.use("/api/pod/reading", (req, res, next) => {

@@ -509,7 +509,19 @@ export function podScreens() {
 
   const w = weekly();
   screens.push([`${list.length} item${list.length === 1 ? "" : "s"} in here`, `Saved ${w.eaten} Waste ${w.tossed}`]);
-  return { screens: screens.map((sc) => sc.map(lcdLine)), alert: Boolean(recent) };
+  return { screens: screens.map((sc) => sc.map(lcdLine)), alert: Boolean(recent), level: urgencyLevel(c, list) };
+}
+
+// Colour for the pod's RGB LED:
+//   red    = act now: food due today or expired, fridge too warm (alerted), freezer thawing
+//   yellow = soon: food due within 3 days, or conditions a bit off (warm, ripening gas)
+//   green  = all good
+function urgencyLevel(c, list) {
+  const soonest = list[0]?.remainingDays ?? Infinity;
+  const thawing = c.env === "freezer" && c.lifeEnv === "fridge";
+  if (soonest < 1 || pod.warmAlerted || thawing) return "red";
+  if (soonest < 3 || c.temp >= 1.15 || c.gas >= 1.15) return "yellow";
+  return "green";
 }
 
 // ---------- Snapshot for the web app ----------

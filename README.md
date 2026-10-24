@@ -120,8 +120,12 @@ The pod is an **ESP32** with a temperature/humidity sensor, a gas sensor and a *
 | | GND | GND |
 | | SDA | GPIO 21 |
 | | SCL | GPIO 22 |
+| **RGB LED** (common cathode) | R leg → 220Ω | GPIO 25 |
+| | G leg → 220Ω | GPIO 26 |
+| | B leg → 220Ω | GPIO 27 |
+| | long leg (common) | GND (common-anode LED: 3V3, and set `RGB_COMMON_ANODE = true`) |
 
-All GNDs connect together. The LCD's I2C address (0x27 or 0x3F) is found automatically. If the screen lights up but shows nothing, turn the small blue contrast screw on the backpack.
+All GNDs connect together. The LCD's I2C address is found automatically (it scans 0x20–0x27 and 0x38–0x3F; Serial Monitor prints which one). If the screen lights up but shows nothing, turn the small blue contrast screw on the backpack.
 
 ### Flash it
 1. In the Arduino IDE, install the board package **esp32 by Espressif**, then these libraries: **DHT sensor library**, **Adafruit Unified Sensor**, **LiquidCrystal I2C** (Frank de Brabander).
@@ -133,6 +137,7 @@ All GNDs connect together. The LCD's I2C address (0x27 or 0x3F) is found automat
 - **LCD:** "Eat Me First / WiFi connecting" → "WiFi connected", then screens cycling every 3 s: where the pod is and its temperature, **EAT FIRST** + the most urgent item, any alert (the backlight flashes), and the weekly score.
 - **App:** the header switches from *no pod* to **pod live**. The pod card shows real readings plus a 📟 preview of the LCD.
 - **No WiFi or app down:** the LCD shows the pod's own readings ("App offline" / "No WiFi").
+- **RGB LED:** 🟢 green = all good · 🟡 yellow = eat something within 3 days, or a bit warm / ripening gas · 🔴 red = food due today or expired, fridge too warm, or freezer thawing (blinks on a new alert) · 🔵 blue = can't reach WiFi or the app. On power-up it flashes white once.
 - The onboard LED blinks once per reading sent, twice if the app had a problem, and three times if there's no WiFi.
 
 ```

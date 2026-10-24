@@ -1,7 +1,8 @@
 // Eat Me First pod - ESP32 + sensors + 16x2 LCD, connected to the app over WiFi.
 //
 // Every 5 s: read sensors -> send to the app -> the app replies with what the LCD should show
-// (where the pod is, what to eat first, alerts, weekly score). The LCD cycles through those screens.
+// (where the pod is, what to eat first, alerts, weekly score) and the urgency level for the RGB LED:
+// green = all good, yellow = eat something soon, red = act now (blinks on a new alert), blue = offline.
 // If WiFi or the app is down, the LCD shows the pod's own readings instead.
 // Serial Monitor at 115200 baud shows everything that happens.
 //
@@ -38,6 +39,10 @@ const int GAS_PIN  = 34;   // MQ-3 AO via voltage divider (ADC1 - works while Wi
 const int LED_PIN  = 2;    // onboard LED on most ESP32 dev boards
 // LCD uses the ESP32's default I2C pins: SDA = GPIO 21, SCL = GPIO 22
 
+// RGB status LED (each colour leg through a 220 ohm resistor)
+const int RGB_R = 25, RGB_G = 26, RGB_B = 27;
+const bool RGB_COMMON_ANODE = false;  // true if the LED's long leg goes to 3V3 instead of GND
+
 const unsigned long SEND_INTERVAL_MS   = 5000;     // one reading every 5 s
 const unsigned long SCREEN_INTERVAL_MS = 3000;     // next LCD screen every 3 s
 const unsigned long GAS_WARMUP_MS      = 180000;   // MQ-3 heater needs ~3 min before readings mean anything
@@ -50,17 +55,38 @@ DallasTemperature ds(&oneWire);
 DHT dht(TEMP_PIN, DHT22);
 #endif
 
-LiquidCrystal_I2C* lcd = nullptr;   // created once we know its I2C address (0x27 or 0x3F)
+LiquidCrystal_I2C* lcd = nullptr;   // created once we know its I2C address (found by scanning)
 
 // Screens to cycle through: [i][0] = top line, [i][1] = bottom line
 String screens[MAX_SCREENS][2];
 int screenCount = 0;
 int screenIndex = 0;
 bool appAlert = false;
+enum Level { GREEN, YELLOW, RED, OFFLINE };
+Level level = OFFLINE;
 bool appReachable = false;
 unsigned long seq = 0;
 float lastTemp = NAN, lastHum = NAN;
 int lastGas = 0;
+
+// ---------- RGB LED ----------
+void rgb(int r, int g, int b) {
+  if (RGB_COMMON_ANODE) { r = 255 - r; g = 255 - g; b = 255 - b; }
+  analogWrite(RGB_R, r);
+  analogWrite(RGB_G, g);
+  analogWrite(RGB_B, b);
+}
+
+// Steady colour for the level; red blinks while there's a fresh alert
+void updateRgb() {
+  bool blinkOff = appAlert && level == RED && (millis() / 400) % 2;
+  switch (level) {
+    case GREEN:   rgb(0, 160, 0); break;
+    case YELLOW:  rgb(255, 110, 0); break;
+    case RED:     blinkOff ? rgb(0, 0, 0) : rgb(255, 0, 0); break;
+    case OFFLINE: rgb(0, 0, 160); break;
+  }
+}
 
 // ---------- LCD ----------
 bool i2cDevice(uint8_t addr) {
@@ -70,9 +96,15 @@ bool i2cDevice(uint8_t addr) {
 
 void setupLcd() {
   Wire.begin();  // SDA 21, SCL 22
-  uint8_t addr = i2cDevice(0x27) ? 0x27 : i2cDevice(0x3F) ? 0x3F : 0;
+  // I2C backpacks (PCF8574 / PCF8574A) sit at 0x20-0x27 or 0x38-0x3F; 0x27 and 0x3F are the usual ones
+  uint8_t addr = 0;
+  const uint8_t preferred[] = {0x27, 0x3F};
+  for (uint8_t a : preferred) if (!addr && i2cDevice(a)) addr = a;
+  for (uint8_t a = 0x20; !addr && a <= 0x3F; a++) {
+    if ((a <= 0x27 || a >= 0x38) && i2cDevice(a)) addr = a;
+  }
   if (!addr) {
-    Serial.println("No LCD found on I2C (checked 0x27 and 0x3F) - check SDA=21, SCL=22, 5V, GND. Running without it.");
+    Serial.println("No LCD found on I2C - check SDA=21, SCL=22, VCC=5V, GND. Running without it.");
     return;
   }
   lcd = new LiquidCrystal_I2C(addr, 16, 2);
@@ -99,6 +131,7 @@ void setLocalScreens(const char* why) {
   screens[screenCount][1] = why;
   screenCount++;
   appAlert = false;
+  level = OFFLINE;
 }
 
 // App reply: line 1 = "ALERT" or "OK", then 2 lines per screen
@@ -112,7 +145,9 @@ void setScreensFromApp(const String& body) {
     start = end + 1;
   }
   if (count < 3) return;  // nothing useful
-  appAlert = lines[0] == "ALERT";
+  // First line: "<GREEN|YELLOW|RED> <ALERT|OK>"
+  appAlert = lines[0].endsWith("ALERT");
+  level = lines[0].startsWith("RED") ? RED : lines[0].startsWith("YELLOW") ? YELLOW : GREEN;
   screenCount = 0;
   for (int i = 1; i + 1 < count && screenCount < MAX_SCREENS; i += 2) {
     screens[screenCount][0] = lines[i];
@@ -194,6 +229,9 @@ void setup() {
   dht.begin();
 #endif
   Serial.println("\n=== Eat Me First pod ===");
+  pinMode(RGB_R, OUTPUT); pinMode(RGB_G, OUTPUT); pinMode(RGB_B, OUTPUT);
+  rgb(255, 255, 255); delay(300);   // quick white flash: LED works
+  rgb(0, 0, 160);
   setupLcd();
   show("Eat Me First", "Starting...");
   connectWiFi();
@@ -202,6 +240,7 @@ void setup() {
 
 void loop() {
   static unsigned long lastSend = 0, lastScreen = 0;
+  updateRgb();
 
   if (millis() - lastSend >= SEND_INTERVAL_MS || lastSend == 0) {
     lastSend = millis();
