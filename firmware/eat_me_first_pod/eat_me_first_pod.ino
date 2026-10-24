@@ -213,12 +213,10 @@ void show(const String& top, const String& bottom) {
   lcd->setCursor(0, 1); lcd->print(bottom.substring(0, 16));
 }
 
-// What to show when the app can't be reached: the pod's own readings
+// What to show when the app can't be reached
 void setLocalScreens(const char* why) {
+  // Without the app we don't know what's in the fridge: just say why
   screenCount = 0;
-  screens[screenCount][0] = isnan(lastTemp) ? "Temp: sensor?" : "Temp " + String(lastTemp, 1) + "C";
-  screens[screenCount][1] = isnan(lastHum) ? "" : "Humidity " + String(lastHum, 0) + "%";
-  screenCount++;
   screens[screenCount][0] = "Eat Me First";
   screens[screenCount][1] = why;
   screenCount++;

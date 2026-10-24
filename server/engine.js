@@ -481,34 +481,14 @@ function lcdRow(left, right) {
 }
 
 export function podScreens() {
+  // The LCD only answers "what should I eat?": the 3 most urgent foods, one per screen.
+  // Everything else (temperature, alerts, weekly score) lives in the app; the LED shows urgency.
   const c = conditions();
-  const t = currentTemp();
-  const screens = [];
-
-  const status = c.temp >= 1.15 ? `WARM! food x${c.temp.toFixed(1)}`
-    : c.gas >= 1.15 ? `Ripening gas +${c.gasAbovePct}%`
-    : c.env === "freezer" && c.lifeEnv === "fridge" ? "THAWING!"
-    : "Conditions OK";
-  screens.push([lcdRow(c.env.toUpperCase(), t != null ? `${t.toFixed(1)}C` : ""), status]);
-
   const list = activeItems();
-  if (list.length) {
-    screens.push(["EAT FIRST:", lcdRow(list[0].name, lcdDays(list[0].remainingDays))]);
-    if (list[1]) screens.push(["THEN:", lcdRow(list[1].name, lcdDays(list[1].remainingDays))]);
-  } else {
-    screens.push(["Nothing tracked", "Add food in app"]);
-  }
-
-  // Most recent alert from the last hour
+  const screens = list.length
+    ? list.slice(0, 3).map((item, n) => [n === 0 ? "EAT FIRST:" : "NEXT:", lcdRow(item.name, lcdDays(item.remainingDays))])
+    : [["Nothing to eat", "Add food in app"]];
   const recent = alerts.find((a) => a.type !== "test" && Date.now() - a.t < 60 * MIN);
-  if (recent) {
-    const head = { safety: "!! FRIDGE WARM", ripening: "!! RIPENING GAS", expiry: "!! EAT ME FIRST" }[recent.type] || "!! ALERT";
-    const detail = recent.type === "expiry" ? (list[0] ? lcdText(list[0].name) : "Check the app") : "Check the app";
-    screens.push([head, detail]);
-  }
-
-  const w = weekly();
-  screens.push([`${list.length} item${list.length === 1 ? "" : "s"} in here`, `Saved ${w.eaten} Waste ${w.tossed}`]);
   return { screens: screens.map((sc) => sc.map(lcdLine)), alert: Boolean(recent), level: urgencyLevel(c, list) };
 }
 
