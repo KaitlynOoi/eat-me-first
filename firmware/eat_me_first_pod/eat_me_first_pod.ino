@@ -15,7 +15,11 @@
 //   DS18B20 fallback only: "OneWire" + "DallasTemperature"
 
 // ======== SETTINGS ========
-// (WiFi is set up from your phone - see above)
+// Quick option: type your WiFi (or phone hotspot) here and the pod connects straight to it.
+// Leave both "" to set WiFi up from your phone instead (the "EatMeFirst-Setup" hotspot, see above).
+// Must be 2.4 GHz (iPhone hotspot: turn on "Maximize Compatibility").
+const char* WIFI_SSID     = "";
+const char* WIFI_PASSWORD = "";
 // Your app's address + /api/pod/reading
 const char* SERVER_URL    = "https://eat-me-first-xjwe.onrender.com/api/pod/reading";
 // Must match POD_KEY on the server (Render -> Environment). Leave "" if the server has no POD_KEY.
@@ -246,6 +250,21 @@ void setScreensFromApp(const String& body) {
 // First time (or after a WiFi reset): open the "EatMeFirst-Setup" hotspot until WiFi is configured
 void setupWiFi() {
   WiFi.mode(WIFI_STA);
+  if (strlen(WIFI_SSID)) {                     // WiFi typed into the code: just connect
+    show("WiFi connecting", WIFI_SSID);
+    Serial.printf("Connecting to \"%s\"", WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) { delay(500); Serial.print("."); }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("\nWiFi OK, IP %s\n", WiFi.localIP().toString().c_str());
+      show("WiFi connected", WIFI_SSID);
+    } else {
+      Serial.println("\nWiFi failed - check the name/password and that it's 2.4 GHz");
+      show("WiFi failed", "Check name/pass");
+    }
+    return;
+  }
   WiFiManager wm;
   pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
   delay(50);
