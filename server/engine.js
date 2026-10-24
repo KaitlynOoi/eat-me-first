@@ -481,12 +481,12 @@ function lcdRow(left, right) {
 }
 
 export function podScreens() {
-  // The LCD only answers "what should I eat?": the 3 most urgent foods, one per screen.
+  // The LCD only answers "what should I eat first?": ONE steady screen with the most urgent food.
   // Everything else (temperature, alerts, weekly score) lives in the app; the LED shows urgency.
   const c = conditions();
   const list = activeItems();
   const screens = list.length
-    ? list.slice(0, 3).map((item, n) => [n === 0 ? "EAT FIRST:" : "NEXT:", lcdRow(item.name, lcdDays(item.remainingDays))])
+    ? [["EAT FIRST:", lcdRow(list[0].name, lcdDays(list[0].remainingDays))]]
     : [["Nothing to eat", "Add food in app"]];
   const recent = alerts.find((a) => a.type !== "test" && Date.now() - a.t < 60 * MIN);
   return { screens: screens.map((sc) => sc.map(lcdLine)), alert: Boolean(recent), level: urgencyLevel(c, list) };

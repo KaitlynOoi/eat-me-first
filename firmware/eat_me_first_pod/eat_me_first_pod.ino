@@ -205,12 +205,32 @@ void flashLcd() {
   }
 }
 
+// Pad to exactly 16 characters so new text fully covers the old (no clear() = no flicker)
+String fit16(const String& s) {
+  String t = s.substring(0, 16);
+  while (t.length() < 16) t += ' ';
+  return t;
+}
+
+String shownTop, shownBottom;   // what's on the LCD right now
+
 void show(const String& top, const String& bottom) {
+  if (top == shownTop && bottom == shownBottom) return;   // nothing changed: don't touch the LCD
+  shownTop = top; shownBottom = bottom;
   Serial.printf("[LCD] %-16s | %s\n", top.c_str(), bottom.c_str());
   if (!lcd) return;
-  lcd->clear();
-  lcd->setCursor(0, 0); lcd->print(top.substring(0, 16));
-  lcd->setCursor(0, 1); lcd->print(bottom.substring(0, 16));
+  lcd->setCursor(0, 0); lcd->print(fit16(top));
+  lcd->setCursor(0, 1); lcd->print(fit16(bottom));
+}
+
+// A loose or noisy wire can scramble a bare LCD; re-initialising it now and then recovers it
+void refreshLcd() {
+#if LCD_PARALLEL
+  if (!lcd) return;
+  lcdPar.begin(16, 2);
+  lcd->setCursor(0, 0); lcd->print(fit16(shownTop));
+  lcd->setCursor(0, 1); lcd->print(fit16(shownBottom));
+#endif
 }
 
 // What to show when the app can't be reached
@@ -397,6 +417,9 @@ void loop() {
   }
 
   // Cycle the LCD screens; flash the backlight on alerts
+  static unsigned long lastRefresh = 0;
+  if (millis() - lastRefresh >= 60000) { lastRefresh = millis(); refreshLcd(); }
+
   if (millis() - lastScreen >= SCREEN_INTERVAL_MS && screenCount > 0) {
     lastScreen = millis();
     screenIndex = (screenIndex + 1) % screenCount;
