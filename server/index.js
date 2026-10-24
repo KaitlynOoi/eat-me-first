@@ -6,6 +6,7 @@ import * as engine from "./engine.js";
 import * as sim from "./simulator.js";
 import { scanGroceries, claudeEnabled } from "./claude.js";
 import { suggestRecipes, quickIdea } from "./recipes.js";
+import { lookupBarcode } from "./barcode.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const app = express();
@@ -56,6 +57,8 @@ app.post("/api/items/:id/days", route(async (req) => { await engine.setDaysLeft(
 app.post("/api/shopping", route(async (req) => ({ added: await engine.addToShopping(req.body.names || [], req.body.recipe || null) })));
 app.post("/api/shopping/:id/toggle", route(async (req) => { await engine.toggleShopping(req.params.id); return { ok: true }; }));
 app.post("/api/shopping/remove", route(async (req) => { await engine.removeShopping(req.body.ids || []); return { ok: true }; }));
+
+app.get("/api/barcode/:code", route((req) => lookupBarcode(req.params.code)));
 
 app.post("/api/scan", route(async (req) => ({ items: await scanGroceries(req.body.image) })));
 app.post("/api/recipes", route(async () => {

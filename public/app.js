@@ -109,10 +109,8 @@ function render() {
     ? `Phone alerts: install the ntfy app and subscribe to "${config.ntfyTopic}".`
     : "Phone alerts are off: set NTFY_TOPIC in .env.";
 
-  $("scanHint").textContent = state.photoScan
-    ? "Take a photo and we'll list the food in it."
-    : "Photo scan is off (no Claude API key). Use Add anything or quick add below.";
-  $("photoLabel").classList.toggle("hidden", !state.photoScan);
+  // AI photo scan only shows up once a Claude API key is set on the server
+  $("photoCard").classList.toggle("hidden", !state.photoScan);
 
   if (!quickAddBuilt) {
     quickAddBuilt = true;
@@ -403,6 +401,146 @@ $("photoInput").addEventListener("change", async (e) => {
       : `<p class="muted">No food found. Try another photo.</p>`;
   } catch (err) {
     $("scanResult").innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+  }
+});
+
+// ---------- Barcode scanner (free: html5-qrcode + Open Food Facts) ----------
+let scanner = null;
+let scanning = false;
+let product = null; // last looked-up product
+
+const bcStatus = (msg) => { $("bcStatus").textContent = msg; };
+
+function getScanner() {
+  if (!window.Html5Qrcode) return null;
+  const F = Html5QrcodeSupportedFormats;
+  scanner ??= new Html5Qrcode("reader", {
+    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E],
+    useBarCodeDetectorIfSupported: true, // fast native detector on Android; ZXing fallback on iPhone
+    verbose: false,
+  });
+  return scanner;
+}
+
+async function startCamera() {
+  const s = getScanner();
+  if (!s) return bcStatus("Scanner didn't load. Use a photo or type the number below.");
+  $("bcResult").innerHTML = "";
+  bcStatus("Starting camera…");
+  try {
+    await s.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: (w, h) => ({ width: Math.round(Math.min(w * 0.85, 320)), height: Math.round(Math.min(h * 0.45, 150)) }) },
+      onBarcode,
+      () => {} // "no barcode in this frame" - ignore
+    );
+    scanning = true;
+    bcStatus("Point the camera at the barcode and hold steady");
+  } catch {
+    bcStatus("Can't open the camera. Allow camera access, or use a photo / type the number below.");
+    $("bcAlt").open = true;
+  }
+}
+
+async function stopCamera() {
+  if (!scanning) return;
+  scanning = false;
+  try { await scanner.stop(); scanner.clear(); } catch {}
+}
+
+async function onBarcode(code) {
+  if (!scanning) return;
+  navigator.vibrate?.(80);
+  await stopCamera();
+  lookupBarcode(code);
+}
+
+async function lookupBarcode(code) {
+  bcStatus(`Looking up ${code}…`);
+  $("bcResult").innerHTML = "";
+  try {
+    product = await api(`/api/barcode/${encodeURIComponent(code)}`);
+    renderProduct();
+  } catch (err) {
+    bcStatus(err.message);
+    $("bcResult").innerHTML = `<button class="wide" data-bc="again">Scan again</button>`;
+  }
+}
+
+function renderProduct() {
+  const p = product;
+  if (p.found) {
+    bcStatus("Found it! Check the days, then add it.");
+    $("bcResult").innerHTML = `
+      <div class="product">
+        ${p.image ? `<img src="${esc(p.image)}" alt="">` : `<span class="emoji-big">${p.emoji}</span>`}
+        <div><b>${esc(p.name)}</b><span class="muted">${esc([p.brand, p.quantity].filter(Boolean).join(" · "))}</span></div>
+      </div>
+      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="${p.life.fridge}"> days in the fridge</div>
+      <p class="muted">${p.guessed ? "We couldn't tell what kind of food this is, so check the date on the pack." : "Estimated from the product type. Change it if the pack says otherwise."}</p>
+      <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
+  } else {
+    bcStatus(`Barcode ${p.code} isn't in the free product database yet.`);
+    $("bcResult").innerHTML = `
+      <input id="bcName" type="text" placeholder="What is it? e.g. Oat milk" maxlength="60">
+      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="7"> days in the fridge</div>
+      <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
+    $("bcName").focus();
+  }
+}
+
+async function addScannedProduct() {
+  const days = Number($("bcDays").value);
+  if (!(days > 0)) return toast("Enter how many days it lasts");
+  let item;
+  if (product.found) {
+    const scale = days / product.life.fridge; // keep freezer/pantry in proportion to the edited fridge days
+    item = {
+      name: product.name,
+      emoji: product.emoji,
+      life: Object.fromEntries(Object.entries(product.life).map(([k, v]) => [k, v * scale])),
+    };
+  } else {
+    const name = $("bcName").value.trim();
+    if (!name) return toast("Type what the product is");
+    item = { name, life: { fridge: days, freezer: Math.max(30, days * 10), pantry: Math.max(0.1, days / 3) } };
+  }
+  await addItems([item]);
+  startCamera(); // groceries come in batches: go straight to the next one
+}
+
+$("barcodeBtn").addEventListener("click", () => {
+  $("barcodeSheet").showModal();
+  $("bcAlt").open = false;
+  startCamera();
+});
+$("bcClose").addEventListener("click", () => $("barcodeSheet").close());
+$("barcodeSheet").addEventListener("close", stopCamera);
+$("bcResult").addEventListener("click", async (e) => {
+  const action = e.target.closest("[data-bc]")?.dataset.bc;
+  try {
+    if (action === "add") await addScannedProduct();
+    if (action === "again") startCamera();
+  } catch (err) { toast(err.message); }
+});
+$("bcManual").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("bcCode").value.replace(/\D/g, "");
+  if (!code) return;
+  await stopCamera();
+  lookupBarcode(code);
+});
+$("bcPhoto").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  await stopCamera();
+  bcStatus("Reading the barcode in your photo…");
+  try {
+    const code = await getScanner().scanFile(file, false);
+    lookupBarcode(code);
+  } catch {
+    bcStatus("No barcode found in that photo. Get closer, keep it sharp and well lit, or type the number.");
   }
 });
 

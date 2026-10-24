@@ -177,3 +177,23 @@ button.danger { color: var(--red); display: block; margin: 14px auto 0; }
 .weekly .bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--red) 35%, var(--line)); overflow: hidden; margin: 10px 0 6px; }
 .weekly .bar span { display: block; height: 100%; background: var(--green); }
 .weekly p { margin: 6px 0 0; font-size: 14px; }
+
+/* ---------- v4: barcode scanner ---------- */
+button.wide, .button.wide { display: block; width: 100%; }
+.center { text-align: center; }
+.sheet.tall { max-height: 94vh; overflow-y: auto; }
+#reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+#reader:empty { display: none; }
+#reader video { width: 100% !important; display: block; }
+.bc-alt { margin-top: 12px; }
+.bc-alt .button { margin: 10px 0; }
+.bc-alt input { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+.product { display: flex; gap: 12px; align-items: center; margin: 8px 0 12px; }
+.product img { width: 72px; height: 72px; object-fit: contain; background: #fff; border-radius: 10px; flex: none; }
+.product .emoji-big { width: 72px; height: 72px; display: grid; place-items: center; font-size: 40px; background: var(--line); border-radius: 10px; flex: none; }
+.product b { display: block; font-size: 17px; }
+.days-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+.days-row input, #bcResult input[type=text] { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+.days-row input { width: 80px; }
+#bcResult input[type=text] { width: 100%; margin-bottom: 8px; }
+#bcResult .row button { flex: 1; }

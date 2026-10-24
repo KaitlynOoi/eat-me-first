@@ -9,7 +9,7 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
 | Data storage | `data.json` on your laptop (Firebase free tier optional) | Free |
 | Recipes | [TheMealDB](https://www.themealdb.com) public API | Free, no key |
 | Phone alerts | [ntfy.sh](https://ntfy.sh) | Free, no account |
-| Adding food | Quick-add buttons | Free |
+| Adding food | Barcode scan ([Open Food Facts](https://world.openfoodfacts.org)), quick-add, type anything | Free |
 | Photo scan (optional) | Claude Haiku | Under 1 cent per photo |
 
 ## Features
@@ -19,7 +19,10 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
   - Food grouped into Eat today, Eat soon and Fresh.
   - Tap an item to edit its days left: Opened it, +1 day, Use today, or Remove if you added it by mistake.
 - **✓ Ate it / Tossed:** each one counts toward your score, every action has **Undo**, and **Recently removed** has a Restore button for anything you got wrong.
-- **Add tab:** photo scan (optional), Add anything (name + days), and quick-add buttons.
+- **Add tab:**
+  - **Barcode scan** (free): point the phone camera at a pack, and the product name plus estimated shelf life come from Open Food Facts. If the camera doesn't work, use a photo of the barcode or type the number.
+  - Add anything (name + days) and quick-add buttons.
+  - AI photo scan appears only when an Anthropic key is set.
 - **Recipes tab:** recipes ranked by how much soon-to-expire food they use. Chips show what you have and what you'd need to buy, and **🛒 Add to list** sends the missing items to your shopping list.
 - **List tab:** a shopping list. Tap to tick items off, then clear the checked ones.
 
