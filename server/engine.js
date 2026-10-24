@@ -178,8 +178,18 @@ export async function addItem({ name, emoji, life, used = 0 }) {
 export async function setStatus(id, status) {
   const item = items[id];
   if (!item) throw new Error("Unknown item");
-  item.status = status; // "eaten" | "tossed"
+  item.status = status; // "eaten" | "tossed" | "removed" (added by mistake)
   item.closedAt = Date.now();
+  await store.set(`items/${id}`, item);
+}
+
+// Undo: put an eaten/tossed/removed item back in the fridge.
+// lastAged is untouched, so it catches up on the time it was "gone" (it was in the fridge all along).
+export async function restore(id) {
+  const item = items[id];
+  if (!item) throw new Error("Unknown item");
+  item.status = "active";
+  delete item.closedAt;
   await store.set(`items/${id}`, item);
 }
 
@@ -258,6 +268,11 @@ export function snapshot() {
       history: history.slice(-90),
     },
     items: activeItems(),
+    recentlyRemoved: all
+      .filter((i) => i.status !== "active")
+      .sort((a, b) => b.closedAt - a.closedAt)
+      .slice(0, 10)
+      .map(({ id, name, emoji, status, closedAt }) => ({ id, name, emoji, status, closedAt })),
     stats: {
       eaten: all.filter((i) => i.status === "eaten").length,
       tossed: all.filter((i) => i.status === "tossed").length,

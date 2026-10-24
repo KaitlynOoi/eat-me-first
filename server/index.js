@@ -44,14 +44,16 @@ app.post("/api/items", route(async (req) => {
   return { added };
 }));
 app.post("/api/items/:id/status", route(async (req) => {
-  if (!["eaten", "tossed"].includes(req.body.status)) throw Object.assign(new Error("status must be eaten or tossed"), { status: 400 });
+  if (!["eaten", "tossed", "removed"].includes(req.body.status)) throw Object.assign(new Error("status must be eaten, tossed or removed"), { status: 400 });
   await engine.setStatus(req.params.id, req.body.status);
   return { ok: true };
 }));
 
+app.post("/api/items/:id/restore", route(async (req) => { await engine.restore(req.params.id); return { ok: true }; }));
+
 app.post("/api/scan", route(async (req) => ({ items: await scanGroceries(req.body.image) })));
 app.post("/api/recipes", route(async () => {
-  return { recipes: await suggestRecipes(engine.activeItems()) };
+  return suggestRecipes(engine.activeItems());
 }));
 
 // ---------- Background loops ----------
