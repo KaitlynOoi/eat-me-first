@@ -68,6 +68,7 @@ const char* POD_KEY       = "";
 // ESP32-S3 DevKit: everything on the header side 3V3, RST, 4, 5, 6, 7, 15, 16, 17, 18, 8, 3, 46, 9 ... 13, 5V
 // (GPIO 3 and 46 are skipped: the chip reads them at power-up. Analog needs GPIO 1-10 = ADC1.)
 const int TEMP_PIN = 6;    // DHT11 module "S"
+const int SENSOR_POWER_PIN = 5;  // DHT11 module "+" (the pin supplies its 3.3 V; it only needs ~2.5 mA)
 const int RGB_R = 7, RGB_G = 15, RGB_B = 16;
 #if LCD_PARALLEL
 const int LCD_RS = 17, LCD_E = 18, LCD_D4 = 8, LCD_D5 = 9, LCD_D6 = 10, LCD_D7 = 11;
@@ -89,6 +90,7 @@ const int LCD_SDA  = 32, LCD_SCL = 33;
 const int RGB_R = 25, RGB_G = 26, RGB_B = 27;
 #endif
 const int LED_PIN  = 2;    // onboard blue LED
+const int SENSOR_POWER_PIN = -1;  // classic ESP32: sensor "+" goes to 3V3
 #endif
 
 // RGB LED module (pins R G B -): "-" to GND = common cathode. Set true if its common pin goes to 3V3.
@@ -371,6 +373,11 @@ void setup() {
   // Why did we (re)start? 1=power-on 3=software 4=crash 5=deep sleep 6/7=watchdog 9=brownout 11=USB
   Serial.printf("\n[boot] reset reason %d\n", (int)esp_reset_reason());
   if (LED_PIN >= 0) pinMode(LED_PIN, OUTPUT);
+  if (SENSOR_POWER_PIN >= 0) {   // power the temperature sensor from a pin, then let it start up
+    pinMode(SENSOR_POWER_PIN, OUTPUT);
+    digitalWrite(SENSOR_POWER_PIN, HIGH);
+    delay(1500);
+  }
 #if USE_DS18B20
   ds.begin();
 #else

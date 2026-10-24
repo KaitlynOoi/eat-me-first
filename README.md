@@ -113,7 +113,7 @@ Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 1
 | Part | Part pin | → ESP32-S3 |
 |---|---|---|
 | **DHT11** module (temp + humidity) | S | **GPIO 6** |
-| | + (middle) | **3V3** |
+| | + | **3V3** (either 3V3 pin), or **GPIO 5**: the firmware switches GPIO 5 on to power the sensor |
 | | − | **GND** |
 | **RGB LED** module (4 pins) | R | **GPIO 7** |
 | | G | **GPIO 15** |
