@@ -10,7 +10,8 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
 | Recipes | [TheMealDB](https://www.themealdb.com) public API | Free, no key |
 | Phone alerts | [ntfy.sh](https://ntfy.sh) | Free, no account |
 | Adding food | Barcode scan ([Open Food Facts](https://world.openfoodfacts.org)), quick-add, type anything | Free |
-| Photo scan (optional) | Claude Haiku | Under 1 cent per photo |
+| Fresh produce photos | TensorFlow.js + MobileNet, on the phone | Free |
+| AI photo scan (optional) | Claude Haiku | Under 1 cent per photo |
 
 ## Features
 - **Fridge tab:**
@@ -23,6 +24,7 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
   - **Barcode scan** (free): point the phone camera at a pack, and the product name plus estimated shelf life come from Open Food Facts. Decoding runs on the phone with [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) (or the phone's built-in reader on Android). If the camera doesn't work, use a photo of the barcode or type the number.
   - **Type any food:** we estimate how long it lasts from the name (e.g. "chicken thighs" → 2 days) and you can change it.
   - **Quick add:** about 45 everyday US groceries, grouped by Meat & Seafood, Dairy & Eggs, Produce, Bakery and Leftovers. Use these for butcher, deli and loose produce that have no barcode.
+  - **Snap fresh produce** (free, on-phone AI): take a photo of one fruit or vegetable. MobileNet v2 (TensorFlow.js, self-hosted, ~15 MB, downloaded on first use) shows its top guesses with confidence. You confirm or pick the right one before anything is added. It recognizes about 35 foods (banana, apple, orange, lemon, strawberry, pineapple, broccoli, cauliflower, cucumber, zucchini, bell pepper, corn, pizza…). Tomatoes, carrots, onions, potatoes and meat aren't in the model, so pick those from the list.
   - **Store price stickers** (meat/deli/produce scale labels) are recognized when scanned, and you pick what it is.
   - AI photo scan appears only when an Anthropic key is set.
 - **Recipes tab:** **search** any dish, ingredient, category or cuisine ("pasta", "mexican", "dessert"). Results and recommendations are ranked by how much of your soon-to-expire fridge food they use. Chips show what you have and what you'd need to buy, and **🛒 Add to list** sends the missing items to your shopping list.

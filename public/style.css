@@ -227,3 +227,14 @@ button.wide, .button.wide { display: block; width: 100%; }
 .picks { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .picks button { background: var(--line); color: var(--text); font-size: 14px; padding: 8px 10px; }
 .quick button small { display: block; font-size: 11px; margin-top: 2px; }
+
+/* ---------- v7: fresh produce recognition ---------- */
+.produce-preview { display: block; width: 100%; max-height: 38vh; object-fit: contain; border-radius: 12px; background: #000; }
+.guesses { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.guesses button { display: flex; justify-content: space-between; background: var(--card); color: var(--text); border: 1.5px solid var(--line); font-size: 16px; }
+.guesses button.on, .picks button.on { border-color: var(--green); background: color-mix(in srgb, var(--green) 18%, var(--card)); }
+.picks button { border: 1.5px solid transparent; }
+#produceName { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; margin: 4px 0 8px; }
+#produceConfirm .days-row { margin: 6px 0 10px; }
+#produceConfirm .row button { flex: 1; }
+.confirm-box { background: color-mix(in srgb, var(--green) 10%, var(--card)); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 4px 0 12px; }
