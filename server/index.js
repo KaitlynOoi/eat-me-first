@@ -64,7 +64,7 @@ app.post("/api/pod/reading", route(async (req) => {
   const tempC = val(req.body.tempC, -50, 80);
   const humidity = val(req.body.humidity, 0, 100);
   const gas = val(req.body.gas, 0, 4095);
-  if (tempC === null && gas === null) throw Object.assign(new Error("Send at least tempC or gas"), { status: 400 });
+  // A reading with no values still counts: the pod is online even if a sensor isn't working
   const reading = { tempC, humidity, gas, seq: req.body.seq != null ? `p${req.body.seq}` : `d${++directSeq}`, source: "pod" };
   await store.set("pod/latest", reading);
   await engine.ingest(reading);

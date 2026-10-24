@@ -35,6 +35,9 @@ const char* POD_KEY       = "";
 #define LCD_PARALLEL 1
 
 // Pins are picked automatically for the board you compile for (Tools -> Board).
+// Arduino.h must come first: it's what defines which chip we're building for.
+#include <Arduino.h>
+#include "esp_system.h"
 #if CONFIG_IDF_TARGET_ESP32S3
   #define BOARD_S3 1
 #else
@@ -44,7 +47,6 @@ const char* POD_KEY       = "";
 // there it falls back to a single status LED on GPIO 12.
 #define USE_RGB (BOARD_S3 || !LCD_PARALLEL)
 
-#include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <WiFiClientSecure.h>
@@ -285,6 +287,7 @@ void setupWiFi() {
     rgb(160, 0, 160);                           // purple = waiting for WiFi setup
   });
   show("Eat Me First", "WiFi connecting");
+  Serial.println("[boot] starting WiFi setup (hotspot if no saved WiFi)...");
   if (wm.autoConnect(SETUP_HOTSPOT)) {
     Serial.printf("WiFi OK (%s), IP %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     show("WiFi connected", WiFi.SSID());
@@ -343,7 +346,9 @@ void blink(int times) {
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(3000);  // give the USB serial time to connect so the first lines aren't lost
+  // Why did we (re)start? 1=power-on 3=software 4=crash 5=deep sleep 6/7=watchdog 9=brownout 11=USB
+  Serial.printf("\n[boot] reset reason %d\n", (int)esp_reset_reason());
   if (LED_PIN >= 0) pinMode(LED_PIN, OUTPUT);
 #if USE_DS18B20
   ds.begin();
@@ -358,8 +363,10 @@ void setup() {
 #endif
   rgb(255, 255, 255); delay(300);   // quick white flash: LED works
   rgb(0, 0, 160);
+  Serial.println("[boot] LCD...");
   setupLcd();
   show("Eat Me First", "Starting...");
+  Serial.println("[boot] WiFi...");
   setupWiFi();
   setLocalScreens("Connecting app");
 }

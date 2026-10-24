@@ -88,9 +88,10 @@ function render() {
   $("podBase").textContent = pod.gasBaseline ?? "--";
   // Pods without a gas sensor never send gas: don't show an empty gas box
   $("podGasBox").classList.toggle("hidden", pod.latest?.gas == null && pod.gasBaseline == null);
-  const warm = pod.warmMinutes > 0;
+  const warm = pod.warmMinutes > 0 || pod.sensorProblem;
   $("podWarn").classList.toggle("hidden", !warm);
-  if (warm) $("podWarn").textContent = `⚠️ Fridge above 7°C for ${pod.warmMinutes} min (alert at ${config.warmAlertMin})`;
+  if (pod.sensorProblem) $("podWarn").textContent = "⚠️ Pod is connected, but its temperature sensor isn't reading. Check the sensor's wiring.";
+  else if (warm) $("podWarn").textContent = `⚠️ Fridge above 7°C for ${pod.warmMinutes} min (alert at ${config.warmAlertMin})`;
 
   // Items, grouped by urgency
   const groups = [

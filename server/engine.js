@@ -543,6 +543,8 @@ export function snapshot() {
 
       conditions: (({ temp, gas, gasAbovePct }) => ({ temp, gas, gasAbovePct }))(conditions()),
       lcd: podScreens(),                    // what the pod's screen shows
+      // Pod is online but its temperature sensor returns nothing (wiring problem)
+      sensorProblem: realPodConnected() && history.filter((r) => r.source !== "simulator").slice(-3).every((r) => r.tempC == null),
       latest: history.at(-1) || null,
       warmMinutes: pod.warmSince ? Math.round((Date.now() - pod.warmSince) / MIN) : 0,
       history: history.slice(-90),
