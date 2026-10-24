@@ -107,38 +107,48 @@ The pod is an **ESP32** with a temperature/humidity sensor, a gas sensor and a *
  Your phone ◀──── app (same server): items, forecasts, alerts, the "📟 Pod screen" preview
 ```
 
-### Wiring (ESP32 pin by pin)
-Everything goes on **one side** of the ESP32 DevKit: the side that runs from **3V3** down to **GPIO 13** (and **5V** at the bottom).
+### Wiring: ESP32-S3 + 37-in-1 sensor kit + bare 16x2 LCD
+Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 15, 16, 17, 18, 8, 3, 46, 9, 10, 11, 12, 13, 5V` (GND is at the end of either header). **Don't use GPIO 3 or 46:** the chip reads them at power-up.
 
-| Part | Part pin | ESP32 pin |
+| Part | Part pin | → ESP32-S3 |
 |---|---|---|
-| **16x2 LCD** (I2C backpack) | VCC | **5V** |
+| **DHT11** module (temp + humidity) | S | **GPIO 6** |
+| | + (middle) | **3V3** |
+| | − | **GND** |
+| **RGB LED** module (4 pins) | R | **GPIO 7** |
+| | G | **GPIO 15** |
+| | B | **GPIO 16** |
+| | − | **GND** |
+| **16x2 LCD** (bare, 16 pins) | 1 VSS | **GND** |
+| | 2 VDD | **5V** |
+| | 3 V0 (contrast) | **1kΩ → GND** (2.2kΩ if too dark, or a 10k pot) |
+| | 4 RS | **GPIO 17** |
+| | 5 RW | **GND** |
+| | 6 E | **GPIO 18** |
+| | 7–10 D0–D3 | *not connected* |
+| | 11 D4 | **GPIO 8** |
+| | 12 D5 | **GPIO 9** |
+| | 13 D6 | **GPIO 10** |
+| | 14 D7 | **GPIO 11** |
+| | 15 A (backlight +) | **220Ω → 5V** |
+| | 16 K (backlight −) | **GND** |
+| **MQ-3** gas (optional) | VCC | **5V** |
 | | GND | **GND** |
-| | SDA | **GPIO 32** |
-| | SCL | **GPIO 33** |
-| **DHT22** (temp + humidity) | + / VCC | **3V3** |
-| | out / DATA | **GPIO 14** (bare 4-pin sensor: 10kΩ between DATA and 3V3) |
-| | − / GND | **GND** |
-| **RGB LED** (common cathode) | R leg → 220Ω | **GPIO 25** |
-| | G leg → 220Ω | **GPIO 26** |
-| | B leg → 220Ω | **GPIO 27** |
-| | long leg (common) | **GND** (common-anode LED: **3V3**, and set `RGB_COMMON_ANODE = true`) |
-| **MQ-3** (gas) | VCC | **5V** |
-| | GND | **GND** |
-| | AO | **voltage divider** → GPIO 34: AO ─10kΩ─┬─20kΩ─ GND, with the middle point going to **GPIO 34** |
-| *(free for later)* | | GPIO 35 (2nd gas sensor), GPIO 13 |
+| | AO | **10kΩ → GPIO 4**, and **20kΩ from GPIO 4 → GND** |
+| *Spare* | | GPIO 5 (2nd gas sensor), 12, 13 |
 
-**Don't use GPIO 12:** if it's pulled high at power-up, the ESP32 won't start.
-All GNDs connect together. The LCD's I2C address is found automatically (it scans 0x20–0x27 and 0x38–0x3F; Serial Monitor prints which one). If the screen lights up but shows nothing, turn the small blue contrast screw on the backpack.
+If the RGB module's LED has no small resistors on its board, put a 220Ω resistor in each of the R, G and B wires. The DHT11 reads 0–50°C, so it works for a fridge or pantry but not a freezer.
+
+**Arduino IDE board:** **ESP32S3 Dev Module**, with Partition Scheme **Huge APP**. The pins are chosen automatically for ESP32-S3 vs classic ESP32 (classic ESP32 pins are in the comments at the top of the sketch). For an LCD with an I2C backpack, set `#define LCD_PARALLEL 0`.
 
 ### Flash it (new ESP32)
-1. In the Arduino IDE, install the board package **esp32 by Espressif**, then these libraries: **DHT sensor library**, **Adafruit Unified Sensor**, **LiquidCrystal I2C** (Frank de Brabander), **WiFiManager** (tzapu).
+1. In the Arduino IDE, install the board package **esp32 by Espressif**, then these libraries: **DHT sensor library**, **Adafruit Unified Sensor**, **LiquidCrystal** (Arduino), **WiFiManager** (tzapu), and **LiquidCrystal I2C** only if your LCD has a backpack.
 2. Open `firmware/eat_me_first_pod/eat_me_first_pod.ino`. `SERVER_URL` is already your Render link. Optionally set `POD_KEY` here **and** in Render → Environment.
-3. Tools → Board: **ESP32 Dev Module**. Tools → Partition Scheme: **Huge APP (3MB No OTA)**, which gives the program room to grow. Pick the port, then Upload. If it says "Connecting...____", hold the **BOOT** button until the upload starts.
+3. Tools → Board: **ESP32S3 Dev Module** (classic board: **ESP32 Dev Module**). Tools → Partition Scheme: **Huge APP (3MB No OTA)**, which gives the program room to grow. Pick the port, then Upload. If it says "Connecting...____", hold the **BOOT** button until the upload starts.
 
 Or from a terminal with `arduino-cli`:
 ```
-arduino-cli compile --upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32:PartitionScheme=huge_app firmware/eat_me_first_pod
+arduino-cli compile --upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32s3:PartitionScheme=huge_app firmware/eat_me_first_pod
 ```
 
 ### Connect it to WiFi (from your phone, no password in the code)
