@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f7d4f">
+  <title>Eat Me First</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>🥕 Eat Me First</h1>
+    <span id="podStatus" class="pill">connecting…</span>
+  </header>
+
+  <main>
+    <!-- FRIDGE TAB -->
+    <section id="tab-fridge" class="tab active">
+      <div class="card pod">
+        <div class="pod-env" id="podEnv">—</div>
+        <div class="pod-grid">
+          <div><span class="big" id="podTemp">--</span><small>°C now</small></div>
+          <div><span class="big" id="podAvg">--</span><small>°C 15-min avg</small></div>
+          <div><span class="big" id="podHum">--</span><small>% humidity</small></div>
+          <div><span class="big" id="podGas">--</span><small>gas (base <span id="podBase">--</span>)</small></div>
+        </div>
+        <div id="podWarn" class="warn hidden"></div>
+      </div>
+
+      <h2>Eat these first</h2>
+      <ul id="itemList" class="items"></ul>
+      <p id="emptyItems" class="muted hidden">Nothing tracked yet. Add food on the Add tab.</p>
+
+      <h2>Alerts</h2>
+      <ul id="alertList" class="alerts"></ul>
+
+      <details class="card demo">
+        <summary>Demo controls (fake pod)</summary>
+        <div id="simButtons" class="chips"></div>
+        <div class="row">
+          <button id="calibrateBtn" class="secondary">Set gas baseline now</button>
+          <button id="testAlertBtn" class="secondary">Send test phone alert</button>
+        </div>
+        <p class="muted" id="ntfyInfo"></p>
+      </details>
+    </section>
+
+    <!-- ADD TAB -->
+    <section id="tab-add" class="tab">
+      <div class="card">
+        <h2>📷 Scan groceries</h2>
+        <p class="muted" id="scanHint">Take a photo and we'll list the food in it.</p>
+        <label class="button" id="photoLabel">
+          Take / choose photo
+          <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+        </label>
+        <div id="scanResult"></div>
+      </div>
+
+      <h2>Quick add</h2>
+      <div id="quickAdd" class="quick"></div>
+    </section>
+
+    <!-- RECIPES TAB -->
+    <section id="tab-recipes" class="tab">
+      <p class="muted">Free recipe ideas that use your soonest-expiring food.</p>
+      <button id="recipesBtn">Find recipes</button>
+      <ul id="recipeList" class="recipes"></ul>
+    </section>
+  </main>
+
+  <nav>
+    <button data-tab="fridge" class="active">🧊<span>Fridge</span></button>
+    <button data-tab="add">➕<span>Add</span></button>
+    <button data-tab="recipes">🍳<span>Recipes</span></button>
+  </nav>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "eat-me-first",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fridge/pantry sensor pod + web app that tells you what to eat first",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "dotenv": "^18.0.9",
+    "express": "^4.22.3"
+  }
+}
