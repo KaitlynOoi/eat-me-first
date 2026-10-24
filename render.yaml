@@ -1,0 +1,19 @@
+# One-click deploy on Render (free plan): New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: eat-me-first
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/state
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Filled in on the Render dashboard (left blank here so secrets stay out of git)
+      - key: FIREBASE_DB_URL
+        sync: false
+      - key: NTFY_TOPIC
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

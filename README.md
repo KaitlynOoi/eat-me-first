@@ -24,6 +24,20 @@ npm start
 
 Open http://localhost:3000. To use it on your phone, connect to the same WiFi and open the "your phone" address that the server prints.
 
+## Put it online for anyone (free, Render)
+1. **Set up Firebase first** (see below). Free Render servers restart often and wipe local files, so without Firebase your food list resets to the demo items.
+2. Go to https://render.com and sign up with **GitHub**. Allow Render to access the `eat-me-first` repo.
+3. Click **New + → Blueprint** and choose `eat-me-first`. Render reads `render.yaml`.
+4. Fill in `FIREBASE_DB_URL`, plus `NTFY_TOPIC` and `ANTHROPIC_API_KEY` if you use them, then click **Apply**.
+5. After about 2 minutes you get a public link like `https://eat-me-first.onrender.com`.
+
+Every `git push` redeploys the app automatically.
+
+Free plan notes:
+- The app sleeps after 15 minutes with no visitors, and the first visit after that takes about 30 seconds to load. Open it a minute before you present.
+- While it's asleep, the alert checks stop too. A free ping service such as UptimeRobot can load `/api/state` every 10 minutes to keep it awake.
+- Anyone with the link can see and change the food list.
+
 ## Turn on phone alerts (2 minutes)
 1. Install the **ntfy** app (iOS/Android).
 2. Choose an unguessable topic name, e.g. `eatmefirst-k7x92q`. Subscribe to it in the app.
