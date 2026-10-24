@@ -108,23 +108,27 @@ The pod is an **ESP32** with a temperature/humidity sensor, a gas sensor and a *
 ```
 
 ### Wiring (ESP32 pin by pin)
+Everything goes on **one side** of the ESP32 DevKit: the side that runs from **3V3** down to **GPIO 13** (and **5V** at the bottom).
+
 | Part | Part pin | ESP32 pin |
 |---|---|---|
-| **DHT22** (temp + humidity) | + / VCC | 3V3 |
-| | out / DATA | GPIO 4 (bare 4-pin sensor: 10kΩ between DATA and 3V3) |
-| | − / GND | GND |
-| **MQ-3** (gas) | VCC | VIN / 5V |
-| | GND | GND |
-| | AO | **voltage divider** → GPIO 34: AO ─10kΩ─┬─20kΩ─ GND, with the middle point going to GPIO 34 |
-| **16x2 LCD with I2C backpack** | VCC | VIN / 5V |
-| | GND | GND |
-| | SDA | GPIO 21 |
-| | SCL | GPIO 22 |
-| **RGB LED** (common cathode) | R leg → 220Ω | GPIO 25 |
-| | G leg → 220Ω | GPIO 26 |
-| | B leg → 220Ω | GPIO 27 |
-| | long leg (common) | GND (common-anode LED: 3V3, and set `RGB_COMMON_ANODE = true`) |
+| **16x2 LCD** (I2C backpack) | VCC | **5V** |
+| | GND | **GND** |
+| | SDA | **GPIO 32** |
+| | SCL | **GPIO 33** |
+| **DHT22** (temp + humidity) | + / VCC | **3V3** |
+| | out / DATA | **GPIO 14** (bare 4-pin sensor: 10kΩ between DATA and 3V3) |
+| | − / GND | **GND** |
+| **RGB LED** (common cathode) | R leg → 220Ω | **GPIO 25** |
+| | G leg → 220Ω | **GPIO 26** |
+| | B leg → 220Ω | **GPIO 27** |
+| | long leg (common) | **GND** (common-anode LED: **3V3**, and set `RGB_COMMON_ANODE = true`) |
+| **MQ-3** (gas) | VCC | **5V** |
+| | GND | **GND** |
+| | AO | **voltage divider** → GPIO 34: AO ─10kΩ─┬─20kΩ─ GND, with the middle point going to **GPIO 34** |
+| *(free for later)* | | GPIO 35 (2nd gas sensor), GPIO 13 |
 
+**Don't use GPIO 12:** if it's pulled high at power-up, the ESP32 won't start.
 All GNDs connect together. The LCD's I2C address is found automatically (it scans 0x20–0x27 and 0x38–0x3F; Serial Monitor prints which one). If the screen lights up but shows nothing, turn the small blue contrast screw on the backpack.
 
 ### Flash it (new ESP32)

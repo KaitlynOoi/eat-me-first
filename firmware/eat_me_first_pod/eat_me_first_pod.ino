@@ -39,12 +39,15 @@ const char* POD_KEY       = "";
   #include <DHT.h>
 #endif
 
-const int TEMP_PIN = 4;    // DHT22 / DS18B20 data
+// All parts use the pins on ONE side of the ESP32 DevKit (the 3V3 ... GPIO 13 side).
+// GPIO 12 is left free on purpose: if it's pulled high at power-up the ESP32 won't boot.
+const int TEMP_PIN = 14;   // DHT22 / DS18B20 data
 const int GAS_PIN  = 34;   // MQ-3 AO via voltage divider (ADC1 - works while WiFi is on)
+const int LCD_SDA  = 32;   // LCD I2C backpack SDA
+const int LCD_SCL  = 33;   // LCD I2C backpack SCL
 const int LED_PIN  = 2;    // onboard LED on most ESP32 dev boards
 const int SETUP_BUTTON_PIN = 0;    // the BOOT button: hold it at start-up to set up WiFi again
 const char* SETUP_HOTSPOT = "EatMeFirst-Setup";
-// LCD uses the ESP32's default I2C pins: SDA = GPIO 21, SCL = GPIO 22
 
 // RGB status LED (each colour leg through a 220 ohm resistor)
 const int RGB_R = 25, RGB_G = 26, RGB_B = 27;
@@ -102,7 +105,7 @@ bool i2cDevice(uint8_t addr) {
 }
 
 void setupLcd() {
-  Wire.begin();  // SDA 21, SCL 22
+  Wire.begin(LCD_SDA, LCD_SCL);
   // I2C backpacks (PCF8574 / PCF8574A) sit at 0x20-0x27 or 0x38-0x3F; 0x27 and 0x3F are the usual ones
   uint8_t addr = 0;
   const uint8_t preferred[] = {0x27, 0x3F};
@@ -111,7 +114,7 @@ void setupLcd() {
     if ((a <= 0x27 || a >= 0x38) && i2cDevice(a)) addr = a;
   }
   if (!addr) {
-    Serial.println("No LCD found on I2C - check SDA=21, SCL=22, VCC=5V, GND. Running without it.");
+    Serial.printf("No LCD found on I2C - check SDA=GPIO %d, SCL=GPIO %d, VCC=5V, GND. Running without it.\n", LCD_SDA, LCD_SCL);
     return;
   }
   lcd = new LiquidCrystal_I2C(addr, 16, 2);
