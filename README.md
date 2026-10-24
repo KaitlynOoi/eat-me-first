@@ -132,10 +132,7 @@ Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 1
 | | 14 D7 | **GPIO 11** |
 | | 15 A (backlight +) | **220Ω → 5V** |
 | | 16 K (backlight −) | **GND** |
-| **MQ-3** gas (optional) | VCC | **5V** |
-| | GND | **GND** |
-| | AO | **10kΩ → GPIO 4**, and **20kΩ from GPIO 4 → GND** |
-| *Spare* | | GPIO 5 (2nd gas sensor), 12, 13 |
+| *Spare* | | GPIO 4, 5, 12, 13 |
 
 If the RGB module's LED has no small resistors on its board, put a 220Ω resistor in each of the R, G and B wires. The DHT11 reads 0–50°C, so it works for a fridge or pantry but not a freezer.
 

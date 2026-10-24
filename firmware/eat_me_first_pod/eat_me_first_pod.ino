@@ -1,4 +1,4 @@
-// Eat Me First pod - ESP32 + sensors + 16x2 LCD, connected to the app over WiFi.
+// Eat Me First pod - ESP32 + temperature/humidity sensor + 16x2 LCD + RGB LED, connected to the app over WiFi.
 //
 // Every 5 s: read sensors -> send to the app -> the app replies with what the LCD should show
 // (where the pod is, what to eat first, alerts, weekly score) and an urgency level for the status LED.
@@ -61,8 +61,6 @@ const char* POD_KEY       = "";
 #if BOARD_S3
 // ESP32-S3 DevKit: everything on the header side 3V3, RST, 4, 5, 6, 7, 15, 16, 17, 18, 8, 3, 46, 9 ... 13, 5V
 // (GPIO 3 and 46 are skipped: the chip reads them at power-up. Analog needs GPIO 1-10 = ADC1.)
-const int GAS_PIN  = 4;    // MQ-3 AO via voltage divider (ADC1)
-                           // GPIO 5 = spare ADC1 pin for a 2nd gas sensor (MQ-135)
 const int TEMP_PIN = 6;    // DHT11 module "S"
 const int RGB_R = 7, RGB_G = 15, RGB_B = 16;
 #if LCD_PARALLEL
@@ -73,7 +71,6 @@ const int LCD_SDA = 17, LCD_SCL = 18;
 const int LED_PIN  = -1;   // the S3 DevKit's onboard LED is a NeoPixel; not used
 #else
 // Classic ESP32 DevKit: everything on the 3V3 ... GPIO 13 side
-const int GAS_PIN  = 34;   // MQ-3 AO via voltage divider (ADC1 - works while WiFi is on)
 #if LCD_PARALLEL
 const int LCD_RS = 32, LCD_E = 33, LCD_D4 = 25, LCD_D5 = 26, LCD_D6 = 27, LCD_D7 = 14;
 const int TEMP_PIN   = 13; // DHT data
@@ -95,7 +92,6 @@ const char* SETUP_HOTSPOT = "EatMeFirst-Setup";
 
 const unsigned long SEND_INTERVAL_MS   = 5000;     // one reading every 5 s
 const unsigned long SCREEN_INTERVAL_MS = 3000;     // next LCD screen every 3 s
-const unsigned long GAS_WARMUP_MS      = 180000;   // MQ-3 heater needs ~3 min before readings mean anything
 const int MAX_SCREENS = 8;
 
 #if USE_DS18B20
@@ -122,7 +118,6 @@ Level level = OFFLINE;
 bool appReachable = false;
 unsigned long seq = 0;
 float lastTemp = NAN, lastHum = NAN;
-int lastGas = 0;
 
 // ---------- Status LED ----------
 #if !USE_RGB
@@ -218,7 +213,7 @@ void setLocalScreens(const char* why) {
   screens[screenCount][0] = isnan(lastTemp) ? "Temp: sensor?" : "Temp " + String(lastTemp, 1) + "C";
   screens[screenCount][1] = isnan(lastHum) ? "" : "Humidity " + String(lastHum, 0) + "%";
   screenCount++;
-  screens[screenCount][0] = millis() < GAS_WARMUP_MS ? "Gas: warming up" : "Gas level " + String(lastGas);
+  screens[screenCount][0] = "Eat Me First";
   screens[screenCount][1] = why;
   screenCount++;
   appAlert = false;
@@ -293,18 +288,11 @@ void connectWiFi() {
   Serial.println(WiFi.status() == WL_CONNECTED ? "WiFi back" : "Still no WiFi");
 }
 
-int readGasRaw() {
-  long sum = 0;
-  for (int i = 0; i < 16; i++) { sum += analogRead(GAS_PIN); delay(5); }
-  return sum / 16;
-}
-
 // Send one reading; the reply (thanks to ?lcd=1) is the LCD text
-bool sendReading(bool gasReady) {
+bool sendReading() {
   String body = "{\"seq\":" + String(seq) +
     ",\"tempC\":" + (isnan(lastTemp) ? String("null") : String(lastTemp, 2)) +
-    ",\"humidity\":" + (isnan(lastHum) ? String("null") : String(lastHum, 1)) +
-    ",\"gas\":" + (gasReady ? String(lastGas) : String("null")) + "}";
+    ",\"humidity\":" + (isnan(lastHum) ? String("null") : String(lastHum, 1)) + "}";
 
   WiFiClientSecure client;
   client.setInsecure();   // hackathon shortcut: skip certificate checks (traffic is still encrypted)
@@ -338,8 +326,6 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   if (LED_PIN >= 0) pinMode(LED_PIN, OUTPUT);
-  analogReadResolution(12);
-  analogSetPinAttenuation(GAS_PIN, ADC_11db);
 #if USE_DS18B20
   ds.begin();
 #else
@@ -373,14 +359,12 @@ void loop() {
     lastTemp = dht.readTemperature();
     lastHum = dht.readHumidity();
 #endif
-    lastGas = readGasRaw();
-    bool gasReady = millis() > GAS_WARMUP_MS; // don't let warm-up drift become the "normal" gas level
     seq++;
-    Serial.printf("#%lu  temp %.1f C | hum %.0f %% | gas %d%s\n", seq, lastTemp, lastHum, lastGas, gasReady ? "" : " (warming up)");
+    Serial.printf("#%lu  temp %.1f C | hum %.0f %%\n", seq, lastTemp, lastHum);
 
     connectWiFi();
     if (WiFi.status() == WL_CONNECTED) {
-      appReachable = sendReading(gasReady);
+      appReachable = sendReading();
       blink(appReachable ? 1 : 2);   // 1 blink = sent, 2 = app problem
     } else {
       setLocalScreens("No WiFi");

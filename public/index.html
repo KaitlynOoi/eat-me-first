@@ -52,7 +52,7 @@
           <div><span class="big" id="podTemp">--</span><small>°C now</small></div>
           <div><span class="big" id="podAvg">--</span><small>°C 15-min avg</small></div>
           <div><span class="big" id="podHum">--</span><small>% humidity</small></div>
-          <div><span class="big" id="podGas">--</span><small>gas (normal <span id="podBase">--</span>)</small></div>
+          <div id="podGasBox"><span class="big" id="podGas">--</span><small>gas (normal <span id="podBase">--</span>)</small></div>
         </div>
         <div id="podWarn" class="warn hidden"></div>
         <div id="podSpeed" class="speed"></div>
@@ -248,9 +248,11 @@
       <button type="button" class="secondary" id="tempClear">Clear</button>
     </form>
 
-    <h3 class="set-h">Gas sensor</h3>
-    <p class="muted small">The pod learns what "normal" smells like by itself. If you just cleaned the fridge or moved the pod, reset it.</p>
-    <button id="calibrateBtn" class="secondary wide">Reset normal gas level</button>
+    <div id="gasSettings" class="hidden">
+      <h3 class="set-h">Gas sensor</h3>
+      <p class="muted small">The pod learns what "normal" smells like by itself. If you just cleaned the fridge or moved the pod, reset it.</p>
+      <button id="calibrateBtn" class="secondary wide">Reset normal gas level</button>
+    </div>
 
     <h3 class="set-h">Phone alerts</h3>
     <p class="muted small" id="ntfyInfo"></p>

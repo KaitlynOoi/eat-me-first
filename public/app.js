@@ -86,6 +86,8 @@ function render() {
   $("podHum").textContent = fmt(pod.latest?.humidity, 0);
   $("podGas").textContent = pod.latest?.gas ?? "--";
   $("podBase").textContent = pod.gasBaseline ?? "--";
+  // Pods without a gas sensor never send gas: don't show an empty gas box
+  $("podGasBox").classList.toggle("hidden", pod.latest?.gas == null && pod.gasBaseline == null);
   const warm = pod.warmMinutes > 0;
   $("podWarn").classList.toggle("hidden", !warm);
   if (warm) $("podWarn").textContent = `⚠️ Fridge above 7°C for ${pod.warmMinutes} min (alert at ${config.warmAlertMin})`;
@@ -210,6 +212,7 @@ function renderSettings() {
     ? "A real pod is connected, so the demo pod stays off."
     : "Turn on to simulate a pod (realistic readings + demo buttons) when you don't have the hardware with you.";
   $("demoToggle").checked = pod.demo;
+  $("gasSettings").classList.toggle("hidden", pod.latest?.gas == null && pod.gasBaseline == null);
 }
 
 const openSettings = () => { renderSettings(); $("settingsSheet").showModal(); };
