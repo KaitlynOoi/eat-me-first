@@ -34,47 +34,60 @@ const RULES = [
 ];
 const DEFAULT = { emoji: "🛒", life: { fridge: 7, freezer: 90, pantry: 7 } };
 
-export async function lookupBarcode(code) {
+function cleanCode(code) {
   code = String(code || "").replace(/\D/g, "");
   if (code.length < 6 || code.length > 14) {
     throw Object.assign(new Error("That doesn't look like a product barcode"), { status: 400 });
   }
-  if (cache.has(code)) return cache.get(code);
+  return code;
+}
 
-  let data;
-  try {
-    const res = await fetch(`${API}${code}.json?fields=${FIELDS}`, {
-      // Open Food Facts asks apps to identify themselves
-      headers: { "User-Agent": "EatMeFirst/0.1 (food-waste hackathon app)" },
-      signal: AbortSignal.timeout(8000),
-    });
-    data = await res.json();
-  } catch {
-    throw Object.assign(new Error("Couldn't reach the product database. Try again."), { status: 502 });
+// Open Food Facts sometimes drops or stalls requests, so give it a couple of tries
+async function fetchProduct(code) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${API}${code}.json?fields=${FIELDS}`, {
+        // Open Food Facts asks apps to identify themselves
+        headers: { "User-Agent": "EatMeFirst/0.1 (food-waste hackathon app)" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.status === 404) return { status: 0 };          // not in the database
+      if (res.ok) return await res.json();
+    } catch {}
+    await new Promise((r) => setTimeout(r, 400 * attempt));
   }
+  throw Object.assign(new Error("Couldn't reach the product database. Try again."), { status: 502 });
+}
 
+// Turn an Open Food Facts response into our item shape (name, emoji, shelf life)
+export function classify(code, data) {
+  code = cleanCode(code);
   const p = data?.product;
-  const name = (p?.product_name || p?.generic_name || "").trim();
-  if (data?.status !== 1 || !name) {
-    const result = { found: false, code };
-    cache.set(code, result);
-    return result;
-  }
+  const name = String(p?.product_name || p?.generic_name || "").trim();
+  if (data?.status !== 1 || !name) return { found: false, code };
 
-  const haystack = [...(p.categories_tags || []), name].join(" ").toLowerCase();
+  const tags = Array.isArray(p.categories_tags) ? p.categories_tags : [];
+  const haystack = [...tags, name].join(" ").toLowerCase();
   const rule = RULES.find((r) => r.match.test(haystack)) || DEFAULT;
-  const brand = (p.brands || "").split(",")[0].trim();
-  const result = {
+  const image = typeof p.image_front_small_url === "string" && p.image_front_small_url.startsWith("https://images.openfoodfacts.org/")
+    ? p.image_front_small_url : null;
+  return {
     found: true,
     code,
     name: name.slice(0, 50),
-    brand,
-    quantity: p.quantity || "",
-    image: p.image_front_small_url || null,
+    brand: String(p.brands || "").split(",")[0].trim().slice(0, 40),
+    quantity: String(p.quantity || "").slice(0, 20),
+    image,
     emoji: rule.emoji,
     life: rule.life,
     guessed: rule === DEFAULT,
   };
+}
+
+export async function lookupBarcode(code) {
+  code = cleanCode(code);
+  if (cache.has(code)) return cache.get(code);
+  const result = classify(code, await fetchProduct(code));
   cache.set(code, result);
   return result;
 }

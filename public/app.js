@@ -12,7 +12,7 @@ async function api(path, body) {
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   return data;
 }
 
@@ -404,22 +404,36 @@ $("photoInput").addEventListener("change", async (e) => {
   }
 });
 
-// ---------- Barcode scanner (free: html5-qrcode + Open Food Facts) ----------
-let scanner = null;
+// ---------- Barcode scanner (free: zxing-cpp in the browser + Open Food Facts) ----------
+// We run our own camera loop so every frame is decoded at full camera resolution.
+// (Shrinking frames to the on-screen box, as many scanner widgets do, blurs the thin bars together.)
+const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e"];
+let detector = null;
+let stream = null;
 let scanning = false;
 let product = null; // last looked-up product
+const frame = document.createElement("canvas");
+const frameCtx = frame.getContext("2d", { willReadFrequently: true });
 
 const bcStatus = (msg) => { $("bcStatus").textContent = msg; };
 
-function getScanner() {
-  if (!window.Html5Qrcode) return null;
-  const F = Html5QrcodeSupportedFormats;
-  scanner ??= new Html5Qrcode("reader", {
-    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E],
-    useBarCodeDetectorIfSupported: true, // fast native detector on Android; ZXing fallback on iPhone
-    verbose: false,
+// The phone's built-in barcode reader when it has one (Android Chrome), otherwise zxing-cpp (WebAssembly)
+async function getDetector() {
+  if (detector) return detector;
+  const forceZxing = new URLSearchParams(location.search).has("zxing"); // test the iPhone path on a desktop
+  if (!forceZxing && "BarcodeDetector" in window) {
+    try {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      if (FORMATS.every((f) => supported.includes(f))) return (detector = new window.BarcodeDetector({ formats: FORMATS }));
+    } catch {}
+  }
+  const zx = window.BarcodeDetectionAPI;
+  if (!zx) throw new Error("Scanner didn't load");
+  zx.prepareZXingModule({
+    overrides: { locateFile: (path, prefix) => (path.endsWith(".wasm") ? `vendor/${path}` : prefix + path) },
+    fireImmediately: true,
   });
-  return scanner;
+  return (detector = new zx.BarcodeDetector({ formats: FORMATS }));
 }
 
 // ---- Camera permission: explain first, then let the phone ask ----
@@ -483,47 +497,116 @@ async function openScanner() {
 }
 
 async function startCamera() {
-  const s = getScanner();
-  if (!s) return bcStatus("Scanner didn't load. Use a photo or type the number below.");
   $("bcResult").innerHTML = "";
   $("camAsk").classList.add("hidden");
   bcStatus("Starting camera…");
+  let det;
+  try { det = await getDetector(); } catch {
+    bcStatus("Scanner didn't load. Use a photo or type the number below.");
+    $("bcAlt").open = true;
+    return;
+  }
   try {
-    await s.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: (w, h) => ({ width: Math.round(Math.min(w * 0.85, 320)), height: Math.round(Math.min(h * 0.45, 150)) }) },
-      onBarcode,
-      () => {} // "no barcode in this frame" - ignore
-    );
-    scanning = true;
-    try { localStorage.setItem(CAM_OK_KEY, "1"); } catch {}
-    bcStatus("Point the camera at the barcode and hold steady");
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      // Ask for HD: more pixels per bar means sharper reads from further away
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
   } catch (err) {
     const msg = String(err?.name || err);
-    if (/NotAllowed|Permission|denied/i.test(msg)) {
+    if (/NotAllowed|Permission|denied|Security/i.test(msg)) {
       try { localStorage.removeItem(CAM_OK_KEY); } catch {}
       showCamBlocked();
-    } else if (/NotFound|Overconstrained|no camera/i.test(msg)) {
+    } else if (/NotFound|Overconstrained/i.test(msg)) {
       bcStatus("No camera found on this device. Use a photo or type the number below.");
       $("bcAlt").open = true;
     } else {
       bcStatus("Can't open the camera right now. Close other apps using it, or use a photo / type the number below.");
       $("bcAlt").open = true;
     }
+    return;
+  }
+  try { localStorage.setItem(CAM_OK_KEY, "1"); } catch {}
+
+  const track = stream.getVideoTracks()[0];
+  try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {} // keep refocusing where supported
+  setupTorch(track);
+  const video = $("bcVideo");
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  $("reader").classList.remove("hidden");
+  scanning = true;
+  bcStatus("Fit the barcode inside the box and hold steady");
+  scanLoop(det, video);
+}
+
+async function scanLoop(det, video) {
+  const started = Date.now();
+  let hinted = false;
+  let n = 0;
+  while (scanning) {
+    if (video.readyState >= 2 && video.videoWidth) {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      frameCtx.imageSmoothingQuality = "high";
+      if (n++ % 2 === 0) {
+        // Middle band of the full-resolution frame (around the aim box)
+        const sh = Math.round(vh * 0.6), sy = Math.round((vh - sh) / 2);
+        const scale = Math.min(1, 1600 / vw);
+        frame.width = Math.round(vw * scale);
+        frame.height = Math.round(sh * scale);
+        frameCtx.drawImage(video, 0, sy, vw, sh, 0, 0, frame.width, frame.height);
+      } else {
+        // 2x zoom into the centre, so small or far-away barcodes get more pixels per bar
+        const cw = Math.round(vw * 0.5), ch = Math.round(vh * 0.3);
+        const scale = Math.min(2, 1600 / cw);
+        frame.width = Math.round(cw * scale);
+        frame.height = Math.round(ch * scale);
+        frameCtx.drawImage(video, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, frame.width, frame.height);
+      }
+      try {
+        const hit = (await det.detect(frame)).find((b) => FORMATS.includes(b.format) && b.rawValue);
+        if (hit && scanning) return onBarcode(hit.rawValue);
+      } catch {}
+      if (!hinted && Date.now() - started > 8000) {
+        hinted = true;
+        bcStatus("Still looking… hold the phone 15–25 cm away so the bars look sharp, and add more light.");
+      }
+    }
+    await new Promise((r) => setTimeout(r, 100));
   }
 }
 
+function setupTorch(track) {
+  const btn = $("torchBtn");
+  const caps = track.getCapabilities?.() || {};
+  btn.classList.toggle("hidden", !caps.torch);
+  btn.classList.remove("on");
+  btn.onclick = async () => {
+    const on = !btn.classList.contains("on");
+    try { await track.applyConstraints({ advanced: [{ torch: on }] }); btn.classList.toggle("on", on); } catch {}
+  };
+}
+
 async function stopCamera() {
-  if (!scanning) return;
   scanning = false;
-  try { await scanner.stop(); scanner.clear(); } catch {}
+  stream?.getTracks().forEach((t) => t.stop());
+  stream = null;
+  $("bcVideo").srcObject = null;
+  $("reader").classList.add("hidden");
 }
 
 async function onBarcode(code) {
-  if (!scanning) return;
   navigator.vibrate?.(80);
   await stopCamera();
   lookupBarcode(code);
+}
+
+// Backup: if our server can't reach Open Food Facts, ask it straight from the phone
+async function lookupFromPhone(code) {
+  const fields = "product_name,generic_name,brands,categories_tags,image_front_small_url,quantity";
+  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=${fields}`);
+  const data = res.status === 404 ? { status: 0 } : await res.json();
+  return api("/api/barcode/classify", { code, data });
 }
 
 async function lookupBarcode(code) {
@@ -531,11 +614,20 @@ async function lookupBarcode(code) {
   $("bcResult").innerHTML = "";
   try {
     product = await api(`/api/barcode/${encodeURIComponent(code)}`);
-    renderProduct();
   } catch (err) {
-    bcStatus(err.message);
-    $("bcResult").innerHTML = `<button class="wide" data-bc="again">Scan again</button>`;
+    if (err.status && err.status < 500) {        // e.g. not a product barcode
+      bcStatus(err.message);
+      $("bcResult").innerHTML = `<button class="wide" data-bc="again">Scan again</button>`;
+      return;
+    }
+    try { product = await lookupFromPhone(code); } catch {
+      bcStatus("Couldn't reach the product database. Check your internet and try again.");
+      $("bcResult").innerHTML = `<div class="row"><button data-bc="retry" data-code="${esc(code)}">Try again</button>
+        <button class="secondary" data-bc="again">Scan another</button></div>`;
+      return;
+    }
   }
+  renderProduct();
 }
 
 function renderProduct() {
@@ -591,6 +683,7 @@ $("bcResult").addEventListener("click", async (e) => {
   try {
     if (action === "add") await addScannedProduct();
     if (action === "again") startCamera();
+    if (action === "retry") lookupBarcode(e.target.closest("[data-code]").dataset.code);
   } catch (err) { toast(err.message); }
 });
 $("bcManual").addEventListener("submit", async (e) => {
@@ -607,10 +700,12 @@ $("bcPhoto").addEventListener("change", async (e) => {
   await stopCamera();
   bcStatus("Reading the barcode in your photo…");
   try {
-    const code = await getScanner().scanFile(file, false);
-    lookupBarcode(code);
+    const det = await getDetector();
+    const hit = (await det.detect(await createImageBitmap(file))).find((b) => FORMATS.includes(b.format) && b.rawValue);
+    if (!hit) throw new Error("none");
+    lookupBarcode(hit.rawValue);
   } catch {
-    bcStatus("No barcode found in that photo. Get closer, keep it sharp and well lit, or type the number.");
+    bcStatus("No barcode found in that photo. Fill the photo with the barcode, keep it sharp and well lit, or type the number.");
   }
 });
 

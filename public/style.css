@@ -183,8 +183,8 @@ button.wide, .button.wide { display: block; width: 100%; }
 .center { text-align: center; }
 .sheet.tall { max-height: 94vh; overflow-y: auto; }
 #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
-#reader:empty { display: none; }
-#reader video { width: 100% !important; display: block; }
+
+
 .bc-alt { margin-top: 12px; }
 .bc-alt .button { margin: 10px 0; }
 .bc-alt input { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
@@ -203,3 +203,12 @@ button.wide, .button.wide { display: block; width: 100%; }
 .cam-ask ol { text-align: left; margin: 10px auto; padding-left: 22px; max-width: 320px; line-height: 1.7; }
 .cam-ask .wide { margin-top: 8px; }
 .small { font-size: 13px; }
+
+/* ---------- v5: own camera view ---------- */
+#reader { position: relative; }
+#reader video { width: 100%; display: block; }
+#reader .aim { position: absolute; left: 8%; right: 8%; top: 32%; bottom: 32%; border: 3px solid rgb(255 255 255 / .9);
+  border-radius: 12px; box-shadow: 0 0 0 2000px rgb(0 0 0 / .35); pointer-events: none; }
+#reader .aim span { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #ff4d4d; opacity: .85; }
+.torch { position: absolute; right: 10px; bottom: 10px; background: rgb(0 0 0 / .55); border-radius: 99px; padding: 8px 12px; font-size: 18px; }
+.torch.on { background: #ffd54a; }

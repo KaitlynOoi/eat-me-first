@@ -162,7 +162,11 @@
       <button class="link" id="bcClose">Done</button>
     </div>
     <div id="camAsk" class="cam-ask hidden"></div>
-    <div id="reader"></div>
+    <div id="reader" class="hidden">
+      <video id="bcVideo" playsinline muted autoplay></video>
+      <div class="aim"><span></span></div>
+      <button id="torchBtn" class="torch hidden" type="button" aria-label="Flashlight">🔦</button>
+    </div>
     <p id="bcStatus" class="muted center">Starting camera…</p>
     <div id="bcResult"></div>
     <details id="bcAlt" class="bc-alt">
@@ -178,7 +182,7 @@
   </dialog>
 
   <div id="toast" class="toast hidden"><span id="toastMsg"></span><button id="toastUndo" class="hidden">Undo</button></div>
-  <script src="vendor/html5-qrcode.min.js"></script>
+  <script src="vendor/barcode-detector.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

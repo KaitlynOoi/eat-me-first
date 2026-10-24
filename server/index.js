@@ -6,7 +6,7 @@ import * as engine from "./engine.js";
 import * as sim from "./simulator.js";
 import { scanGroceries, claudeEnabled } from "./claude.js";
 import { suggestRecipes, quickIdea } from "./recipes.js";
-import { lookupBarcode } from "./barcode.js";
+import { lookupBarcode, classify } from "./barcode.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const app = express();
@@ -59,6 +59,8 @@ app.post("/api/shopping/:id/toggle", route(async (req) => { await engine.toggleS
 app.post("/api/shopping/remove", route(async (req) => { await engine.removeShopping(req.body.ids || []); return { ok: true }; }));
 
 app.get("/api/barcode/:code", route((req) => lookupBarcode(req.params.code)));
+// Backup path: the phone fetched Open Food Facts itself, the server just applies the shelf-life rules
+app.post("/api/barcode/classify", route(async (req) => classify(req.body.code, req.body.data)));
 
 app.post("/api/scan", route(async (req) => ({ items: await scanGroceries(req.body.image) })));
 app.post("/api/recipes", route(async () => {

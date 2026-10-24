@@ -20,7 +20,7 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
   - Tap an item to edit its days left: Opened it, +1 day, Use today, or Remove if you added it by mistake.
 - **✓ Ate it / Tossed:** each one counts toward your score, every action has **Undo**, and **Recently removed** has a Restore button for anything you got wrong.
 - **Add tab:**
-  - **Barcode scan** (free): point the phone camera at a pack, and the product name plus estimated shelf life come from Open Food Facts. If the camera doesn't work, use a photo of the barcode or type the number.
+  - **Barcode scan** (free): point the phone camera at a pack, and the product name plus estimated shelf life come from Open Food Facts. Decoding runs on the phone with [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) (or the phone's built-in reader on Android). If the camera doesn't work, use a photo of the barcode or type the number.
   - Add anything (name + days) and quick-add buttons.
   - AI photo scan appears only when an Anthropic key is set.
 - **Recipes tab:** recipes ranked by how much soon-to-expire food they use. Chips show what you have and what you'd need to buy, and **🛒 Add to list** sends the missing items to your shopping list.
