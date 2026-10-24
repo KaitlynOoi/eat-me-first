@@ -219,6 +219,9 @@ void show(const String& top, const String& bottom) {
   shownTop = top; shownBottom = bottom;
   Serial.printf("[LCD] %-16s | %s\n", top.c_str(), bottom.c_str());
   if (!lcd) return;
+#if LCD_PARALLEL
+  lcdPar.begin(16, 2);   // re-sync first: WiFi power spikes can knock a bare LCD out of step
+#endif
   lcd->setCursor(0, 0); lcd->print(fit16(top));
   lcd->setCursor(0, 1); lcd->print(fit16(bottom));
 }
@@ -386,6 +389,7 @@ void setup() {
   show("Eat Me First", "Starting...");
   Serial.println("[boot] WiFi...");
   setupWiFi();
+  refreshLcd();   // WiFi just started: make sure the LCD is back in sync
   setLocalScreens("Connecting app");
 }
 
@@ -418,7 +422,7 @@ void loop() {
 
   // Cycle the LCD screens; flash the backlight on alerts
   static unsigned long lastRefresh = 0;
-  if (millis() - lastRefresh >= 60000) { lastRefresh = millis(); refreshLcd(); }
+  if (millis() - lastRefresh >= 30000) { lastRefresh = millis(); refreshLcd(); }
 
   if (millis() - lastScreen >= SCREEN_INTERVAL_MS && screenCount > 0) {
     lastScreen = millis();
