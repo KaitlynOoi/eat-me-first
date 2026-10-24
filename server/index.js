@@ -5,7 +5,8 @@ import * as store from "./store.js";
 import * as engine from "./engine.js";
 import * as sim from "./simulator.js";
 import { scanGroceries, claudeEnabled } from "./claude.js";
-import { suggestRecipes, quickIdea } from "./recipes.js";
+import { suggestRecipes, searchRecipes, quickIdea } from "./recipes.js";
+import { estimate } from "./foods.js";
 import { lookupBarcode, classify } from "./barcode.js";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -57,6 +58,10 @@ app.post("/api/items/:id/days", route(async (req) => { await engine.setDaysLeft(
 app.post("/api/shopping", route(async (req) => ({ added: await engine.addToShopping(req.body.names || [], req.body.recipe || null) })));
 app.post("/api/shopping/:id/toggle", route(async (req) => { await engine.toggleShopping(req.params.id); return { ok: true }; }));
 app.post("/api/shopping/remove", route(async (req) => { await engine.removeShopping(req.body.ids || []); return { ok: true }; }));
+
+app.get("/api/recipes/search", route((req) => searchRecipes(req.query.q, engine.activeItems())));
+// "How long does X last?" - shown while typing in Add anything
+app.get("/api/estimate", route((req) => estimate(String(req.query.name || "").slice(0, 60))));
 
 app.get("/api/barcode/:code", route((req) => lookupBarcode(req.params.code)));
 // Backup path: the phone fetched Open Food Facts itself, the server just applies the shelf-life rules

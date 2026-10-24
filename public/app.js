@@ -31,6 +31,11 @@ $("toastUndo").addEventListener("click", async () => {
   if (undoAction) { await undoAction(); undoAction = null; }
 });
 
+// Scanned products show their photo; everything else its food emoji
+const icon = (i, cls = "emoji") => (i.image
+  ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy">`
+  : `<span class="${cls}">${i.emoji}</span>`);
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -82,7 +87,7 @@ function render() {
     <h2 class="group-title">${g.title} <span class="count">${g.items.length}</span></h2>
     <ul class="items">${g.items.map((i) => `
       <li class="${g.cls}">
-        <span class="emoji">${i.emoji}</span>
+        ${icon(i)}
         <div class="info" data-edit="${i.id}"><div class="name">${esc(i.name)}</div><div class="left">${fmtLeft(i.remainingDays)}</div></div>
         <div class="actions">
           <button class="ate" data-done="${i.id}" data-status="eaten" data-name="${esc(i.name)}">✓ Ate it</button>
@@ -95,7 +100,7 @@ function render() {
   const removed = state.recentlyRemoved;
   $("removedBox").classList.toggle("hidden", !removed.length);
   $("removedList").innerHTML = removed.map((r) => `
-    <li><span>${r.emoji}</span><span class="grow">${esc(r.name)}</span>
+    <li>${icon(r, "")}<span class="grow">${esc(r.name)}</span>
       <span class="tag">${STATUS_LABEL[r.status]}</span>
       <button class="secondary" data-restore="${r.id}" data-name="${esc(r.name)}">Restore</button></li>`).join("");
 
@@ -114,8 +119,12 @@ function render() {
 
   if (!quickAddBuilt) {
     quickAddBuilt = true;
-    $("quickAdd").innerHTML = state.catalog.map((c) =>
-      `<button data-add="${esc(c.name)}"><span>${c.emoji}</span>${esc(c.name)}</button>`).join("");
+    $("quickAdd").innerHTML = state.quickAdd.map((sec) => `
+      <div class="quick-section">
+        <h3>${esc(sec.section)}</h3>
+        <div class="quick">${sec.foods.map((f) =>
+          `<button data-add="${esc(f.name)}"><span>${f.emoji}</span>${esc(f.name)}<small class="muted">${f.days < 1 ? "<1" : Math.round(f.days)}d</small></button>`).join("")}</div>
+      </div>`).join("");
   }
 
   // Re-fetch recipes whenever what's in the fridge (or how urgent it is) changes
@@ -225,26 +234,56 @@ function renderUrgent() {
   if (has) $("urgentList").innerHTML = $("recipesUrgent").innerHTML = urgentHtml();
 }
 
+function recipeCard(r) {
+  const urgentIds = new Set(state.items.filter((i) => i.remainingDays < 2).map((i) => i.id));
+  return `
+    <li>
+      <img src="${esc(r.image)}/preview" alt="" loading="lazy">
+      <div class="body">
+        <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)} ↗</a>
+        <div class="chipline">${r.uses.length
+          ? r.uses.map((n, k) => `<span class="chip ${urgentIds.has(r.usesFirstIds[k]) ? "urgent" : "have"}">✓ ${esc(n)}</span>`).join("")
+          : `<span class="chip need">Uses nothing from your fridge</span>`}</div>
+        <div class="chipline">${r.missingCount
+          ? `<span class="muted chip">Need to buy:</span>` + r.missing.map((m) => `<span class="chip need">${esc(m)}</span>`).join("") + (r.missingCount > r.missing.length ? `<span class="chip need">+${r.missingCount - r.missing.length} more</span>` : "")
+          : `<span class="chip have">You have everything!</span>`}</div>
+        ${r.missingCount ? `<button class="addlist" data-shoprecipe="${esc(r.id)}">🛒 Add ${r.missingCount} to list</button>` : ""}
+      </div>
+    </li>`;
+}
+
 function renderRecipes() {
   $("recipeList").innerHTML = recipes.fridge.length
-    ? recipes.fridge.map((r) => {
-      const urgentIds = new Set(state.items.filter((i) => i.remainingDays < 2).map((i) => i.id));
-      return `
-        <li>
-          <img src="${esc(r.image)}/preview" alt="" loading="lazy">
-          <div class="body">
-            <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)} ↗</a>
-            <div class="chipline">${r.uses.map((n, k) =>
-              `<span class="chip ${urgentIds.has(r.usesIds[k]) ? "urgent" : "have"}">✓ ${esc(n)}</span>`).join("")}</div>
-            <div class="chipline">${r.missingCount
-              ? `<span class="muted chip">Need to buy:</span>` + r.missing.map((m) => `<span class="chip need">${esc(m)}</span>`).join("") + (r.missingCount > r.missing.length ? `<span class="chip need">+${r.missingCount - r.missing.length} more</span>` : "")
-              : `<span class="chip have">You have everything!</span>`}</div>
-            ${r.missingCount ? `<button class="addlist" data-shoprecipe="${esc(r.id)}">🛒 Add ${r.missingCount} to list</button>` : ""}
-          </div>
-        </li>`;
-    }).join("")
-    : `<li class="muted">No recipes match yet. Add more food to your fridge.</li>`;
+    ? recipes.fridge.map(recipeCard).join("")
+    : `<li class="muted">No recipes match yet. Add more food to your fridge, or search above.</li>`;
 }
+
+// ---------- Recipe search (ranked by what's in your fridge) ----------
+let searchResults = [];
+async function searchRecipes(q) {
+  $("searchBox").classList.remove("hidden");
+  $("fridgeRecipes").classList.add("hidden");
+  $("searchTitle").textContent = `Results for “${q}”`;
+  $("searchList").innerHTML = `<li class="muted">Searching…</li>`;
+  try {
+    ({ results: searchResults } = await api(`/api/recipes/search?q=${encodeURIComponent(q)}`));
+    $("searchList").innerHTML = searchResults.length
+      ? searchResults.map(recipeCard).join("")
+      : `<li class="muted">No recipes found for “${esc(q)}”. Try one word, like “pasta” or “chicken”.</li>`;
+  } catch (err) {
+    $("searchList").innerHTML = `<li class="muted">Search failed: ${esc(err.message)}</li>`;
+  }
+}
+$("recipeSearch").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = $("recipeQuery").value.trim();
+  if (q.length >= 2) searchRecipes(q);
+});
+$("searchClear").addEventListener("click", () => {
+  $("recipeQuery").value = "";
+  $("searchBox").classList.add("hidden");
+  $("fridgeRecipes").classList.remove("hidden");
+});
 
 async function loadRecipes() {
   try {
@@ -305,7 +344,7 @@ document.addEventListener("click", async (e) => {
     if (btn.dataset.tab) showTab(btn.dataset.tab);
     else if (btn.dataset.tabJump) showTab(btn.dataset.tabJump);
     else if (btn.dataset.shoprecipe) {
-      const r = recipes.fridge.find((x) => x.id === btn.dataset.shoprecipe);
+      const r = [...recipes.fridge, ...searchResults].find((x) => x.id === btn.dataset.shoprecipe);
       await addToShopping(r.missingAll, r.title);
     } else if (btn.id === "shopClear") {
       const done = state.shopping.filter((s) => s.done);
@@ -353,15 +392,37 @@ $("shopAdd").addEventListener("submit", async (e) => {
   try { await addToShopping([name], null); $("shopName").value = ""; } catch (err) { toast(err.message); }
 });
 
-// "Add anything": we only know fridge days, so estimate the rest
+// "Type any food": we estimate how long it lasts as you type; the user can change the days
+let estTimer = null;
+let estFor = "";
+$("customName").addEventListener("input", () => {
+  clearTimeout(estTimer);
+  const name = $("customName").value.trim();
+  if (name.length < 2) { $("customEstimate").classList.add("hidden"); return; }
+  estTimer = setTimeout(async () => {
+    try {
+      const est = await api(`/api/estimate?name=${encodeURIComponent(name)}`);
+      if ($("customName").value.trim() !== name) return; // user kept typing
+      estFor = name;
+      $("estEmoji").textContent = est.emoji;
+      $("customDays").value = Math.round(est.life.fridge * 2) / 2;
+      $("estHint").textContent = est.matched
+        ? `Estimated from “${est.matched}”. Change it if the pack says otherwise.`
+        : "We don't know this one, so we guessed. Change it if you know better.";
+      $("customEstimate").classList.remove("hidden");
+    } catch {}
+  }, 250);
+});
 $("customAdd").addEventListener("submit", async (e) => {
   e.preventDefault();
   const name = $("customName").value.trim();
+  if (!name) return toast("Type a food name");
   const days = Number($("customDays").value);
-  if (!name || !(days > 0)) return;
   try {
-    await addItems([{ name, life: { fridge: days, freezer: Math.max(30, days * 10), pantry: Math.max(0.1, days / 3) } }]);
+    // No days (or an estimate for different text)? The server estimates from the name.
+    await addItems([estFor === name && days > 0 ? { name, days } : { name }]);
     $("customName").value = "";
+    $("customEstimate").classList.add("hidden");
   } catch (err) { toast(err.message); }
 });
 
@@ -642,31 +703,43 @@ function renderProduct() {
       <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="${p.life.fridge}"> days in the fridge</div>
       <p class="muted">${p.guessed ? "We couldn't tell what kind of food this is, so check the date on the pack." : "Estimated from the product type. Change it if the pack says otherwise."}</p>
       <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
-  } else {
-    bcStatus(`Barcode ${p.code} isn't in the free product database yet.`);
+  } else if (p.storeLabel) {
+    // Price sticker from the store's own scale: no product info exists, so ask what it is
+    bcStatus("That's a store price sticker (meat, deli or produce counter). What is it?");
+    const fresh = state.quickAdd.filter((s) => s.section === "Meat & Seafood" || s.section === "Produce")
+      .flatMap((s) => s.foods).slice(0, 18);
     $("bcResult").innerHTML = `
-      <input id="bcName" type="text" placeholder="What is it? e.g. Oat milk" maxlength="60">
-      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="7"> days in the fridge</div>
+      <div class="picks">${fresh.map((f) => `<button data-bc="pick" data-name="${esc(f.name)}">${f.emoji} ${esc(f.name)}</button>`).join("")}</div>
+      <input id="bcName" type="text" placeholder="…or type it, e.g. turkey slices" maxlength="60">
+      <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
+  } else {
+    bcStatus(`Barcode ${p.code} isn't in the free product database yet. What is it?`);
+    $("bcResult").innerHTML = `
+      <input id="bcName" type="text" placeholder="e.g. Oat milk" maxlength="60">
+      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" placeholder="auto"> days <span class="muted small">(leave empty and we'll estimate)</span></div>
       <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
     $("bcName").focus();
   }
 }
 
-async function addScannedProduct() {
-  const days = Number($("bcDays").value);
-  if (!(days > 0)) return toast("Enter how many days it lasts");
+async function addScannedProduct(pickedName) {
   let item;
   if (product.found) {
+    const days = Number($("bcDays").value);
+    if (!(days > 0)) return toast("Enter how many days it lasts");
     const scale = days / product.life.fridge; // keep freezer/pantry in proportion to the edited fridge days
     item = {
       name: product.name,
       emoji: product.emoji,
+      image: product.image,
+      kind: product.kind,
       life: Object.fromEntries(Object.entries(product.life).map(([k, v]) => [k, v * scale])),
     };
   } else {
-    const name = $("bcName").value.trim();
-    if (!name) return toast("Type what the product is");
-    item = { name, life: { fridge: days, freezer: Math.max(30, days * 10), pantry: Math.max(0.1, days / 3) } };
+    const name = pickedName || $("bcName").value.trim();
+    if (!name) return toast("Type what it is, or tap one of the choices");
+    const days = Number($("bcDays")?.value);
+    item = days > 0 ? { name, days } : { name }; // no days -> estimated from the name
   }
   await addItems([item]);
   startCamera(); // groceries come in batches: go straight to the next one
@@ -682,6 +755,7 @@ $("bcResult").addEventListener("click", async (e) => {
   const action = e.target.closest("[data-bc]")?.dataset.bc;
   try {
     if (action === "add") await addScannedProduct();
+    if (action === "pick") await addScannedProduct(e.target.closest("[data-name]").dataset.name);
     if (action === "again") startCamera();
     if (action === "retry") lookupBarcode(e.target.closest("[data-code]").dataset.code);
   } catch (err) { toast(err.message); }

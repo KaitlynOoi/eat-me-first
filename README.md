@@ -21,9 +21,11 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
 - **✓ Ate it / Tossed:** each one counts toward your score, every action has **Undo**, and **Recently removed** has a Restore button for anything you got wrong.
 - **Add tab:**
   - **Barcode scan** (free): point the phone camera at a pack, and the product name plus estimated shelf life come from Open Food Facts. Decoding runs on the phone with [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) (or the phone's built-in reader on Android). If the camera doesn't work, use a photo of the barcode or type the number.
-  - Add anything (name + days) and quick-add buttons.
+  - **Type any food:** we estimate how long it lasts from the name (e.g. "chicken thighs" → 2 days) and you can change it.
+  - **Quick add:** about 45 everyday US groceries, grouped by Meat & Seafood, Dairy & Eggs, Produce, Bakery and Leftovers. Use these for butcher, deli and loose produce that have no barcode.
+  - **Store price stickers** (meat/deli/produce scale labels) are recognized when scanned, and you pick what it is.
   - AI photo scan appears only when an Anthropic key is set.
-- **Recipes tab:** recipes ranked by how much soon-to-expire food they use. Chips show what you have and what you'd need to buy, and **🛒 Add to list** sends the missing items to your shopping list.
+- **Recipes tab:** **search** any dish, ingredient, category or cuisine ("pasta", "mexican", "dessert"). Results and recommendations are ranked by how much of your soon-to-expire fridge food they use. Chips show what you have and what you'd need to buy, and **🛒 Add to list** sends the missing items to your shopping list.
 - **List tab:** a shopping list. Tap to tick items off, then clear the checked ones.
 
 ## Run it

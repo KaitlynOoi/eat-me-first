@@ -1,5 +1,7 @@
 // Free barcode lookup via Open Food Facts (no API key).
 // We get the product name + categories, then guess shelf life from the category.
+import { estimate } from "./foods.js";
+
 const API = "https://world.openfoodfacts.org/api/v2/product/";
 const FIELDS = "product_name,generic_name,brands,categories_tags,image_front_small_url,quantity";
 const cache = new Map();
@@ -59,9 +61,16 @@ async function fetchProduct(code) {
   throw Object.assign(new Error("Couldn't reach the product database. Try again."), { status: 502 });
 }
 
+// Price/weight stickers printed by the store's own scale (meat counter, deli, loose produce).
+// UPC-A starting with 2, or EAN-13 prefixes 20-29: only meaningful inside that one store.
+export function isStoreLabel(code) {
+  return (code.length === 12 && code[0] === "2") || (code.length === 13 && (code[0] === "2" || code.startsWith("02")));
+}
+
 // Turn an Open Food Facts response into our item shape (name, emoji, shelf life)
 export function classify(code, data) {
   code = cleanCode(code);
+  if (isStoreLabel(code)) return { found: false, storeLabel: true, code };
   const p = data?.product;
   const name = String(p?.product_name || p?.generic_name || "").trim();
   if (data?.status !== 1 || !name) return { found: false, code };
@@ -69,6 +78,8 @@ export function classify(code, data) {
   const tags = Array.isArray(p.categories_tags) ? p.categories_tags : [];
   const haystack = [...tags, name].join(" ").toLowerCase();
   const rule = RULES.find((r) => r.match.test(haystack)) || DEFAULT;
+  // Same emoji + generic name as the rest of the app (e.g. "Kirkland 2% Milk" -> 🥛 Milk)
+  const est = estimate(`${name} ${tags.map((t) => t.replace(/^\w\w:/, "").replace(/-/g, " ")).join(" ")}`);
   const image = typeof p.image_front_small_url === "string" && p.image_front_small_url.startsWith("https://images.openfoodfacts.org/")
     ? p.image_front_small_url : null;
   return {
@@ -78,14 +89,16 @@ export function classify(code, data) {
     brand: String(p.brands || "").split(",")[0].trim().slice(0, 40),
     quantity: String(p.quantity || "").slice(0, 20),
     image,
-    emoji: rule.emoji,
-    life: rule.life,
-    guessed: rule === DEFAULT,
+    emoji: est.matched ? est.emoji : rule.emoji,
+    kind: est.kind,
+    life: rule === DEFAULT && est.matched ? est.life : rule.life,
+    guessed: rule === DEFAULT && !est.matched,
   };
 }
 
 export async function lookupBarcode(code) {
   code = cleanCode(code);
+  if (isStoreLabel(code)) return { found: false, storeLabel: true, code };
   if (cache.has(code)) return cache.get(code);
   const result = classify(code, await fetchProduct(code));
   cache.set(code, result);

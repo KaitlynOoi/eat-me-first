@@ -1,7 +1,7 @@
 // Core logic: environment detection, shelf-life aging, and alert rules.
 import crypto from "node:crypto";
 import * as store from "./store.js";
-import { CATALOG, SEED } from "./catalog.js";
+import { QUICK_ADD, SEED, estimate } from "./foods.js";
 import { notify } from "./ntfy.js";
 
 const num = (k, d) => (process.env[k] ? Number(process.env[k]) : d);
@@ -149,23 +149,32 @@ export async function calibrateGas() {
 }
 
 // ---------- Items ----------
-function catalogFor(name) {
-  return CATALOG.find((c) => c.name.toLowerCase() === String(name).toLowerCase());
-}
-
-export async function addItem({ name, emoji, life, used = 0 }) {
-  const known = catalogFor(name);
-  const fullLife = life || known?.life;
-  if (!fullLife) throw new Error(`No shelf life known for "${name}"`);
+// Add anything. Shelf life comes from (first that's given):
+//   life (all three places) -> days (fridge days, others scaled) -> our estimate from the name
+export async function addItem({ name, emoji, life, days, image, kind, used = 0 }) {
+  name = String(name ?? "").trim().slice(0, 60);
+  if (!name) throw Object.assign(new Error("Type a food name"), { status: 400 });
+  const est = estimate(name);
+  let full = est.life;
+  if (life && Number(life.fridge) > 0) full = life;
+  else if (Number(days) > 0) {
+    const scale = Number(days) / est.life.fridge;
+    full = Object.fromEntries(Object.entries(est.life).map(([k, v]) => [k, v * scale]));
+  }
   const item = {
     id: crypto.randomUUID().slice(0, 8),
-    name: String(name).slice(0, 60),
-    emoji: emoji || known?.emoji || "🍽️",
+    name,
+    emoji: emoji || est.emoji,
+    // Product photo from a barcode scan (only Open Food Facts images are allowed)
+    image: typeof image === "string" && image.startsWith("https://images.openfoodfacts.org/") ? image : null,
+    // Generic food name used for recipe matching ("Kirkland 2% Milk" -> "Milk")
+    kind: String(kind || est.kind || "").slice(0, 40) || null,
     life: {
-      fridge: Math.max(0.05, Number(fullLife.fridge) || 3),
-      freezer: Math.max(0.05, Number(fullLife.freezer) || 90),
-      pantry: Math.max(0.05, Number(fullLife.pantry) || 1),
+      fridge: Math.max(0.05, Number(full.fridge) || 5),
+      freezer: Math.max(0.05, Number(full.freezer) || 60),
+      pantry: Math.max(0.05, Number(full.pantry) || 1),
     },
+    estimated: !life && !(Number(days) > 0),
     used: Math.min(0.99, Math.max(0, used)),
     addedAt: Date.now(),
     lastAged: Date.now(),
@@ -290,7 +299,7 @@ export async function ageItems() {
   if (expiring.length) {
     const list = expiring.map((i) => `${i.name} (${fmtDays(remaining(i))})`).join(", ");
     let ideas = "";
-    try { ideas = onExpiring ? await onExpiring(expiring.map((i) => i.name)) : ""; } catch (e) { console.warn("Recipe idea failed:", e.message); }
+    try { ideas = onExpiring ? await onExpiring(expiring.map(({ id, name, kind }) => ({ id, name, kind }))) : ""; } catch (e) { console.warn("Recipe idea failed:", e.message); }
     await raise("expiry", "Eat me first!",
       `Use soon: ${list}.` + (ideas ? `\nIdeas: ${ideas}` : ""),
       { priority: 4, tags: "hourglass,fork_and_knife" });
@@ -344,7 +353,7 @@ export function snapshot() {
       .filter((i) => i.status !== "active")
       .sort((a, b) => b.closedAt - a.closedAt)
       .slice(0, 10)
-      .map(({ id, name, emoji, status, closedAt }) => ({ id, name, emoji, status, closedAt })),
+      .map(({ id, name, emoji, image, status, closedAt }) => ({ id, name, emoji, image, status, closedAt })),
     stats: {
       eaten: all.filter((i) => i.status === "eaten").length,
       tossed: all.filter((i) => i.status === "tossed").length,
@@ -352,7 +361,7 @@ export function snapshot() {
     weekly: weekly(),
     shopping: Object.values(shopping).sort((a, b) => a.done - b.done || b.addedAt - a.addedAt),
     alerts: alerts.slice(0, 20),
-    catalog: CATALOG,
+    quickAdd: QUICK_ADD,
     config: { ...CFG, ntfyTopic: process.env.NTFY_TOPIC || null, firebase: store.usingFirebase },
   };
 }

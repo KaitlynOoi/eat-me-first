@@ -84,19 +84,24 @@
         <div id="scanResult"></div>
       </div>
 
-      <form id="customAdd" class="card custom-add">
-        <h2>✍️ Add anything</h2>
-        <div class="row">
-          <input id="customName" placeholder="e.g. Lasagna leftovers" required maxlength="60">
-          <input id="customDays" type="number" min="0.5" step="0.5" value="3" required aria-label="Days it lasts in the fridge">
-          <span class="muted">days</span>
+      <form id="customAdd" class="card custom-add" autocomplete="off">
+        <h2>✍️ Type any food</h2>
+        <input id="customName" placeholder="e.g. chicken thighs, leftover lasagna" maxlength="60" aria-label="Food name">
+        <div id="customEstimate" class="estimate hidden">
+          <div class="days-row">
+            <span id="estEmoji" class="est-emoji"></span>
+            <span>Lasts about</span>
+            <input id="customDays" type="number" min="0.5" step="0.5" aria-label="Days it lasts in the fridge">
+            <span>days</span>
+          </div>
+          <p class="muted small" id="estHint"></p>
+          <button type="submit" class="wide">Add to fridge</button>
         </div>
-        <button type="submit">Add to fridge</button>
       </form>
 
       <h2>Quick add</h2>
-      <p class="muted">Tap to add. Tapped the wrong one? Hit Undo.</p>
-      <div id="quickAdd" class="quick"></div>
+      <p class="muted">Tap to add. No barcode at the butcher, deli or produce aisle? Pick it here. Wrong one? Hit Undo.</p>
+      <div id="quickAdd"></div>
     </section>
 
     <!-- SHOPPING LIST TAB -->
@@ -112,16 +117,30 @@
 
     <!-- RECIPES TAB -->
     <section id="tab-recipes" class="tab">
-      <div id="recipesUrgentBox" class="hidden">
+      <form id="recipeSearch" class="row search-row" autocomplete="off">
+        <input id="recipeQuery" type="search" placeholder="Search recipes, e.g. pasta, tacos, chicken" maxlength="40" aria-label="Search recipes">
+        <button type="submit">Search</button>
+      </form>
+      <div id="recipesUrgentBox" class="hidden urgent-box">
         <h2>🔥 Use it today</h2>
         <ul id="recipesUrgent" class="urgent-list"></ul>
       </div>
-      <div class="card-head">
-        <h2>🧊 Made from your fridge</h2>
-        <button class="link" id="recipesRefresh">Refresh</button>
+      <div id="searchBox" class="hidden">
+        <div class="card-head">
+          <h2 id="searchTitle">Results</h2>
+          <button class="link" id="searchClear" type="button">✕ Clear</button>
+        </div>
+        <p class="muted">Recipes that use food in your fridge come first.</p>
+        <ul id="searchList" class="recipes"></ul>
       </div>
-      <p class="muted">Ranked by how much of your soon-to-expire food they use.</p>
-      <ul id="recipeList" class="recipes"><li class="muted">Loading recipes…</li></ul>
+      <div id="fridgeRecipes">
+        <div class="card-head">
+          <h2>🧊 Made from your fridge</h2>
+          <button class="link" id="recipesRefresh">Refresh</button>
+        </div>
+        <p class="muted">Picked from what's in your fridge, using the food that expires soonest first.</p>
+        <ul id="recipeList" class="recipes"><li class="muted">Loading recipes…</li></ul>
+      </div>
     </section>
   </main>
 

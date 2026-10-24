@@ -212,3 +212,18 @@ button.wide, .button.wide { display: block; width: 100%; }
 #reader .aim span { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #ff4d4d; opacity: .85; }
 .torch { position: absolute; right: 10px; bottom: 10px; background: rgb(0 0 0 / .55); border-radius: 99px; padding: 8px 12px; font-size: 18px; }
 .torch.on { background: #ffd54a; }
+
+/* ---------- v6: smart add, grouped quick add, recipe search, product photos ---------- */
+.custom-add #customName { width: 100%; font-size: 17px; }
+.estimate { margin-top: 10px; }
+.est-emoji { font-size: 24px; }
+.quick-section h3 { font-size: 14px; color: var(--muted); font-weight: 600; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .03em; }
+.quick-section .quick { margin-bottom: 4px; }
+.quick button.hit { outline: 2px solid var(--green); }
+.thumb { width: 30px; height: 30px; border-radius: 8px; object-fit: contain; background: #fff; flex: none; }
+.removed .thumb { width: 22px; height: 22px; }
+.search-row { margin: 4px 0 12px; }
+.search-row input { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
+.picks { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.picks button { background: var(--line); color: var(--text); font-size: 14px; padding: 8px 10px; }
+.quick button small { display: block; font-size: 11px; margin-top: 2px; }
