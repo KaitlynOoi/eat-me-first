@@ -90,12 +90,20 @@ WARM_ALERT_MIN=1
   - Gas rising for 3+ readings above baseline +25%
   - Any item with under 2 days left. This alert includes a free recipe idea.
 
-## Connecting the real pod later
-The ESP32 can either:
-- `POST http://<laptop-ip>:3000/api/pod/reading` with JSON `{"tempC": 3.4, "humidity": 70, "gas": 612}`, or
-- write the same JSON to Firebase at `pod/latest` (include an increasing `seq` number).
+## The pod: automatic, or your own settings
+- **Real pod connected:** everything is sensed automatically. Location (fridge/freezer/pantry) comes from the 15-minute temperature average, and spoilage speed comes from temperature and gas.
+- **No pod:** the app uses your settings (⚙️ → Where is your pod? / Temperature). Enter your fridge temperature if you know it, or leave it empty for a typical one.
+- **Demo mode** (⚙️ → Demo): a simulated pod with demo buttons, for presenting without hardware. It never runs while a real pod is connected.
 
-Then pick **Off (use real pod)** in Demo controls.
+**Spoilage forecast:** each item ages faster or slower than normal. Temperature follows the Q10 rule (about 3× faster per +10°C vs a typical 4°C fridge or 21°C pantry). Ripening gas above the pod's normal level speeds up fruit and veg only (up to 3×). Items show e.g. "⚡ 1 day sooner · warm".
+
+## Flashing the real pod (step 2)
+1. Open `firmware/eat_me_first_pod/eat_me_first_pod.ino` in the Arduino IDE.
+2. Fill in `WIFI_SSID`, `WIFI_PASSWORD` (2.4 GHz WiFi), and `SERVER_URL` (your Render link + `/api/pod/reading`).
+3. Optional but recommended: pick a secret, set it as `POD_KEY` in the sketch **and** in Render → Environment.
+4. Upload. Serial Monitor (115200) shows each reading, and the LED blinks once per successful send. The app header switches to **pod live**.
+
+The pod sends `{"seq", "tempC", "humidity", "gas"}` every 5 s to `POST /api/pod/reading`. Gas is sent as `null` for the first 3 minutes while the MQ-3 heater warms up.
 
 ```
 firmware/   ESP32 sketch (step 1: read sensors)

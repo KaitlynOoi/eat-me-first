@@ -14,9 +14,17 @@ const BASE = "https://www.themealdb.com/api/json/v1/1";
 const filterCache = new Map();
 const mealCache = new Map();
 
-// Things almost everyone has, so they don't count as "missing"
-const BASICS = new Set(["salt", "pepper", "black pepper", "water", "olive oil", "vegetable oil", "oil", "butter",
-  "sugar", "plain flour", "flour", "garlic", "onion", "rice", "pasta"].map(stem));
+// Pantry staples most kitchens already have, so they don't count as "need to buy"
+const BASICS = new Set([
+  "salt", "pepper", "black pepper", "water", "ice", "olive oil", "vegetable oil", "sunflower oil", "oil", "butter",
+  "sugar", "brown sugar", "caster sugar", "plain flour", "flour", "self-raising flour", "cornstarch", "cornflour",
+  "baking powder", "bicarbonate of soda", "baking soda", "yeast", "vanilla extract", "honey",
+  "garlic", "garlic clove", "onion", "rice", "pasta", "spaghetti",
+  "soy sauce", "vinegar", "white vinegar", "ketchup", "mustard", "mayonnaise", "tomato puree", "tomato paste",
+  "paprika", "cumin", "ground cumin", "chili powder", "chilli powder", "oregano", "dried oregano", "cinnamon", "ground cinnamon",
+  "thyme", "bay leaf", "bay leaves", "basil", "parsley", "nutmeg", "turmeric", "curry powder", "garam masala",
+  "cayenne pepper", "red pepper flakes", "chilli flakes", "ginger", "stock", "chicken stock", "beef stock", "vegetable stock",
+].map(stem));
 
 // Kinds that aren't cooking ingredients (set in foods.js)
 const NOT_INGREDIENTS = new Set(["leftovers", "drink", "condiment"]);
@@ -105,7 +113,11 @@ function annotate(meal, food) {
     missing: missing.slice(0, 5),
     missingAll: missing,
     missingCount: missing.length,
-    score: used.reduce((s, i) => s + weight(i.remainingDays), 0) - missing.length * 0.3,
+    // Urgency of what it uses + a bonus for how much of the recipe you already have,
+    // minus a real penalty for every ingredient you'd have to go and buy
+    score: used.reduce((s, i) => s + weight(i.remainingDays), 0)
+      + (4 * used.length) / Math.max(1, used.length + missing.length)
+      - missing.length * 1.0,
   };
 }
 
@@ -118,20 +130,23 @@ export async function suggestRecipes(items) {
   const perItem = new Set(); // a few meals for EVERY item, so one popular item can't crowd out the rest
   for (const item of food.slice(0, 10)) {
     const meals = await mealsFor(term(item));
-    meals.slice(0, 4).forEach((m) => perItem.add(m.idMeal));
+    meals.slice(0, 6).forEach((m) => perItem.add(m.idMeal));
     for (const m of meals) {
       const c = candidates.get(m.idMeal) || { id: m.idMeal, pre: 0 };
       c.pre += weight(item.remainingDays);
       candidates.set(m.idMeal, c);
     }
   }
-  const topOverall = [...candidates.values()].sort((a, b) => b.pre - a.pre).slice(0, 12).map((c) => c.id);
-  const shortlist = [...new Set([...topOverall, ...perItem])];
+  const topOverall = [...candidates.values()].sort((a, b) => b.pre - a.pre).slice(0, 20).map((c) => c.id);
+  const shortlist = [...new Set([...topOverall, ...perItem])].slice(0, 45);
 
   // Step 2: full ingredient lists -> what you have vs what you'd need to buy
   const meals = (await Promise.all(shortlist.map(mealDetails))).filter(Boolean);
   const ranked = meals.map((m) => annotate(m, food)).filter((r) => r.uses.length).sort((a, b) => b.score - a.score);
-  const fridge = varied(ranked, food, 8);
+  // Keep it short and close to what you have: 5 picks needing at most 4 things from the store
+  // (loosen only if nothing fits)
+  const fewExtras = ranked.filter((r) => r.missingCount <= 4);
+  const fridge = varied(fewExtras.length >= 3 ? fewExtras : ranked.filter((r) => r.missingCount <= 8), food, 5);
 
   // Step 3: one suggestion per urgent item (under 2 days left), each a different recipe
   const taken = new Set();
@@ -185,7 +200,7 @@ function varied(ranked, food, limit) {
       const sc = r.usesIds.reduce((s, id) => {
         const item = food.find((i) => i.id === id);
         return s + weight(item.remainingDays) / (1 + 2 * (covered.get(id) || 0));
-      }, 0) - r.missingCount * 0.3;
+      }, 0) - r.missingCount * 1.0;
       if (sc > bestScore) { bestScore = sc; best = n; }
     });
     const [r] = pool.splice(best, 1);

@@ -28,13 +28,27 @@ app.get("/api/state", route(() => ({ ...engine.snapshot(), sim: { scenario: sim.
 // The ESP32 can POST here directly instead of (or as well as) writing to Firebase
 let directSeq = 0;
 app.post("/api/pod/reading", route(async (req) => {
-  const { tempC, humidity, gas } = req.body;
-  const reading = { tempC, humidity, gas, seq: req.body.seq ?? `d${++directSeq}`, source: "pod" };
+  // Optional shared secret so strangers can't post fake readings to a public server
+  if (process.env.POD_KEY && req.get("X-Pod-Key") !== process.env.POD_KEY) {
+    throw Object.assign(new Error("Wrong or missing pod key"), { status: 401 });
+  }
+  const val = (v, lo, hi) => (v === null || v === undefined || v === "" || !(Number(v) >= lo && Number(v) <= hi) ? null : Number(v));
+  const tempC = val(req.body.tempC, -50, 80);
+  const humidity = val(req.body.humidity, 0, 100);
+  const gas = val(req.body.gas, 0, 4095);
+  if (tempC === null && gas === null) throw Object.assign(new Error("Send at least tempC or gas"), { status: 400 });
+  const reading = { tempC, humidity, gas, seq: req.body.seq != null ? `p${req.body.seq}` : `d${++directSeq}`, source: "pod" };
   await store.set("pod/latest", reading);
   await engine.ingest(reading);
   return { ok: true };
 }));
 
+app.post("/api/settings", route(async (req) => {
+  const { location, tempC, demo } = req.body;
+  await engine.updateSettings({ location, tempC, demo });
+  if (demo) sim.setScenario("fridge");
+  return { ok: true };
+}));
 app.post("/api/sim", route(async (req) => { sim.setScenario(req.body.scenario); return { scenario: sim.getScenario() }; }));
 app.post("/api/calibrate", route(async () => ({ gasBaseline: await engine.calibrateGas() })));
 app.post("/api/test-alert", route(async () => { await engine.testAlert(); return { ok: true }; }));
@@ -77,7 +91,8 @@ engine.setExpiringHook(quickIdea);
 
 async function readingLoop() {
   try {
-    await sim.tick();
+    // Demo pod only when switched on, and never while a real pod is sending data
+    if (engine.demoOn() && !engine.realPodConnected()) await sim.tick();
     const latest = await store.get("pod/latest");
     if (latest) await engine.ingest(latest);
   } catch (e) { console.warn("reading loop:", e.message); }

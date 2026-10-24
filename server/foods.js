@@ -95,8 +95,8 @@ export function findFood(text) {
 export function estimate(name) {
   const food = findFood(name);
   return food
-    ? { matched: food.name, emoji: food.emoji, life: { ...food.life }, kind: food.ingredient || food.name, guessed: false }
-    : { matched: null, emoji: UNKNOWN.emoji, life: { ...UNKNOWN.life }, kind: null, guessed: true };
+    ? { matched: food.name, emoji: food.emoji, life: { ...food.life }, kind: food.ingredient || food.name, section: food.section, guessed: false }
+    : { matched: null, emoji: UNKNOWN.emoji, life: { ...UNKNOWN.life }, kind: null, section: null, guessed: true };
 }
 
 // What the app shows as quick-add buttons

@@ -59,14 +59,27 @@ const fmt = (v, digits = 1) => (v == null ? "--" : Number(v).toFixed(digits));
 function render() {
   const { pod, items, alerts, sim, config } = state;
   const live = pod.lastSeen && Date.now() - pod.lastSeen < 15000;
-  $("podStatus").textContent = live ? (pod.latest?.source === "simulator" ? "demo pod" : "pod live") : "pod offline";
-  $("podStatus").classList.toggle("live", Boolean(live));
+  $("podStatus").textContent = { pod: "pod live", demo: "demo pod", manual: "no pod" }[pod.mode];
+  $("podStatus").classList.toggle("live", pod.mode !== "manual" && Boolean(live));
 
   renderWeekly();
   renderShopping();
 
   // Pod
   $("podEnv").textContent = ENV_LABEL[pod.env] || "Detecting…";
+  $("podEnvHow").textContent = pod.location === "auto" ? (pod.mode === "manual" ? "· default" : "· auto-detected") : "· set by you";
+  // No pod sending readings: show the settings we're going by instead of empty sensor boxes
+  const manual = pod.mode === "manual";
+  $("podGrid").classList.toggle("hidden", manual);
+  $("podManual").classList.toggle("hidden", !manual);
+  if (manual) {
+    $("podManual").innerHTML = `No pod connected, so we're using your settings:
+      <b>${PLACE[pod.env]}</b>${pod.tempSetting != null ? ` at <b>${pod.tempSetting}°C</b>` : " at a typical temperature"}.
+      <button class="link" data-open-settings>Set temperature</button>`;
+  }
+  renderSpeed(pod.conditions);
+  renderSettings();
+  $("demoCard").classList.toggle("hidden", !(pod.demo && pod.mode !== "pod"));
   $("podTemp").textContent = fmt(pod.latest?.tempC);
   $("podAvg").textContent = fmt(pod.avgTempC);
   $("podHum").textContent = fmt(pod.latest?.humidity, 0);
@@ -88,7 +101,7 @@ function render() {
     <ul class="items">${g.items.map((i) => `
       <li class="${g.cls}">
         ${icon(i)}
-        <div class="info" data-edit="${i.id}"><div class="name">${esc(i.name)}</div><div class="left">${fmtLeft(i.remainingDays)}</div></div>
+        <div class="info" data-edit="${i.id}"><div class="name">${esc(i.name)}</div><div class="left">${fmtLeft(i.remainingDays)}</div>${forecastNote(i)}</div>
         <div class="actions">
           <button class="ate" data-done="${i.id}" data-status="eaten" data-name="${esc(i.name)}">✓ Ate it</button>
           <button class="toss" data-done="${i.id}" data-status="tossed" data-name="${esc(i.name)}">Tossed</button>
@@ -132,6 +145,83 @@ function render() {
   if (key !== recipesKey) { recipesKey = key; loadRecipes(); }
   renderUrgent();
 }
+
+// ---------- Spoilage forecast ----------
+// "⚡ 1.2 days sooner · ripening gas +40%" when conditions make an item spoil noticeably faster
+function forecastNote(i) {
+  const f = i.forecast;
+  if (!f || f.speed < 1.15) return "";
+  const lost = f.normalDays - f.remainingDays;
+  const howMuch = lost >= 1 ? `${lost.toFixed(lost < 3 ? 1 : 0)} days sooner` : `${Math.max(1, Math.round(lost * 24))}h sooner`;
+  return `<span class="fc">⚡ ${howMuch} · ${esc(f.reasons.join(", "))}</span>`;
+}
+
+function renderSpeed(c) {
+  const lines = [];
+  if (c.temp >= 1.15) lines.push(`⚡ Food is spoiling ${c.temp.toFixed(1)}× faster than normal because it's warm`);
+  else if (c.temp <= 0.85) lines.push("❄️ Colder than usual: food lasts a bit longer");
+  if (c.gas >= 1.15) lines.push(`🍌 Ripening gas is up ${c.gasAbovePct}%: fruit & veg aging ${c.gas.toFixed(1)}× faster`);
+  $("podSpeed").innerHTML = lines.length ? lines.map(esc).join("<br>") : "✅ Normal conditions: food is aging at its usual pace";
+  $("podSpeed").classList.toggle("fast", lines.some((l) => !l.startsWith("❄️")));
+}
+
+// ---------- Settings ----------
+const PLACE = { fridge: "🧊 Fridge", freezer: "❄️ Freezer", pantry: "🏠 Pantry / counter" };
+
+function renderSettings() {
+  const { pod, config } = state;
+  const detected = pod.detectedEnv
+    ? `${PLACE[pod.detectedEnv]}${pod.avgTempC != null ? ` (${pod.avgTempC.toFixed(1)}°C)` : ""}`
+    : pod.mode === "manual" ? (pod.tempSetting != null ? `${PLACE[pod.env]} from your ${pod.tempSetting}°C` : "needs a pod, using Fridge") : "not sure yet";
+  const opts = [["auto", "🤖 Auto (recommended)", `Detected: ${detected}`], ...Object.entries(PLACE).map(([k, v]) => [k, v, ""])];
+  $("locationChoices").innerHTML = opts.map(([k, label, sub]) =>
+    `<button data-location="${k}" class="${pod.location === k ? "on" : ""}"><span>${label}</span><small>${esc(sub)}</small></button>`).join("");
+  $("locationNote").innerHTML = pod.mismatch
+    ? `<span class="mismatch">⚠️ You set ${PLACE[pod.location]}, but the temperature looks like ${PLACE[pod.mismatch]}. Was the pod moved?</span>`
+    : pod.location !== "auto"
+      ? "Using your setting. Switch back to Auto any time."
+      : pod.mode === "manual"
+        ? "With a pod, this is detected from temperature. Without one, we use your temperature below (or assume a fridge)."
+        : "The pod works this out from temperature (15-minute average), so opening the door won't confuse it.";
+  $("ntfyInfo").textContent = config.ntfyTopic
+    ? `Install the ntfy app and subscribe to "${config.ntfyTopic}".`
+    : "Phone alerts are off on this server (no NTFY_TOPIC set).";
+  $("tempNote").textContent = pod.mode === "pod"
+    ? `Your pod measures this automatically (now ${pod.avgTempC?.toFixed(1)}°C). A saved temperature is only used if the pod goes offline.`
+    : "If you know your fridge/freezer/pantry temperature, enter it. Food ages faster when it's warmer. Leave empty for a typical temperature.";
+  if (document.activeElement !== $("tempInput")) $("tempInput").value = pod.tempSetting ?? "";
+  $("podSourceNote").textContent = pod.mode === "pod"
+    ? "A real pod is connected, so the demo pod stays off."
+    : "Turn on to simulate a pod (realistic readings + demo buttons) when you don't have the hardware with you.";
+  $("demoToggle").checked = pod.demo;
+}
+
+const openSettings = () => { renderSettings(); $("settingsSheet").showModal(); };
+$("settingsBtn").addEventListener("click", openSettings);
+document.addEventListener("click", (e) => { if (e.target.closest("[data-open-settings]")) openSettings(); });
+$("settingsClose").addEventListener("click", () => $("settingsSheet").close());
+$("locationChoices").addEventListener("click", async (e) => {
+  const loc = e.target.closest("[data-location]")?.dataset.location;
+  if (!loc) return;
+  try {
+    await api("/api/settings", { location: loc });
+    toast(loc === "auto" ? "Location: auto-detect" : `Location set to ${PLACE[loc]}`);
+    await refresh();
+  } catch (err) { toast(err.message); }
+});
+async function saveSettings(body, message) {
+  try { await api("/api/settings", body); toast(message); await refresh(); } catch (err) { toast(err.message); }
+}
+$("demoToggle").addEventListener("change", (e) =>
+  saveSettings({ demo: e.target.checked }, e.target.checked ? "Demo pod on" : "Demo pod off"));
+$("tempForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("tempInput").value.trim();
+  if (v === "") return;
+  saveSettings({ tempC: Number(v) }, `Temperature set to ${v}°C`);
+  $("tempInput").blur();
+});
+$("tempClear").addEventListener("click", () => { $("tempInput").value = ""; saveSettings({ tempC: null }, "Using a typical temperature"); });
 
 // ---------- Weekly waste summary ----------
 function renderWeekly() {
@@ -244,9 +334,9 @@ function recipeCard(r) {
         <div class="chipline">${r.uses.length
           ? r.uses.map((n, k) => `<span class="chip ${urgentIds.has(r.usesFirstIds[k]) ? "urgent" : "have"}">✓ ${esc(n)}</span>`).join("")
           : `<span class="chip need">Uses nothing from your fridge</span>`}</div>
-        <div class="chipline">${r.missingCount
-          ? `<span class="muted chip">Need to buy:</span>` + r.missing.map((m) => `<span class="chip need">${esc(m)}</span>`).join("") + (r.missingCount > r.missing.length ? `<span class="chip need">+${r.missingCount - r.missing.length} more</span>` : "")
-          : `<span class="chip have">You have everything!</span>`}</div>
+        <div class="need-line">${r.missingCount
+          ? `Also need: ${r.missing.slice(0, 3).map(esc).join(", ")}${r.missingCount > 3 ? ` +${r.missingCount - 3} more` : ""}`
+          : "✅ You have everything"}</div>
         ${r.missingCount ? `<button class="addlist" data-shoprecipe="${esc(r.id)}">🛒 Add ${r.missingCount} to list</button>` : ""}
       </div>
     </li>`;

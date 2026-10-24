@@ -1,7 +1,7 @@
 // Core logic: environment detection, shelf-life aging, and alert rules.
 import crypto from "node:crypto";
 import * as store from "./store.js";
-import { QUICK_ADD, SEED, estimate } from "./foods.js";
+import { QUICK_ADD, SEED, estimate, findFood } from "./foods.js";
 import { notify } from "./ntfy.js";
 
 const num = (k, d) => (process.env[k] ? Number(process.env[k]) : d);
@@ -34,6 +34,12 @@ let pod = {
   lastGasAlert: 0,
   lastSeen: null,
 };
+let settings = {
+  location: "auto",        // "auto" (detect from temperature) | "fridge" | "freezer" | "pantry"
+  tempC: null,             // the user's own temperature, used when no pod is sending readings
+  demo: false,             // run the demo pod (simulated readings) while no real pod is connected
+};
+let realPodSeenAt = 0;     // last reading from real hardware (not the simulator)
 let lastSeq = null;
 let onExpiring = null;     // hook for recipe suggestions, set by index.js
 
@@ -44,6 +50,7 @@ export async function load() {
   shopping = (await store.get("shopping")) || {};
   const savedPod = await store.get("podState");
   if (savedPod) pod = { ...pod, ...savedPod, warmSince: null, warmAlerted: false };
+  settings = { ...settings, ...((await store.get("settings")) || {}) };
   const savedAlerts = await store.get("alerts");
   alerts = savedAlerts ? Object.values(savedAlerts).sort((a, b) => b.t - a.t) : [];
   if (Object.keys(items).length === 0) {
@@ -55,6 +62,7 @@ export async function load() {
 // Called for every new reading, from the ESP32 (via Firebase or HTTP) or the simulator.
 export async function ingest(reading) {
   if (reading.seq != null && reading.seq === lastSeq) return; // same reading polled twice
+  if (reading.source === "simulator" && !settings.demo) return; // demo pod switched off
   lastSeq = reading.seq ?? null;
   const t = Date.now();
   history.push({
@@ -66,12 +74,22 @@ export async function ingest(reading) {
   });
   history = history.filter((r) => t - r.t <= HISTORY_KEEP_MS);
   pod.lastSeen = t;
+  if (reading.source !== "simulator") realPodSeenAt = t;
   await evaluate();
 }
 
 function num0(v) { return v == null || Number.isNaN(Number(v)) ? null : Number(v); }
 
 function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null; }
+
+// Strict reading of the temperature alone (null when it's in between ranges)
+function detectNow(avgTemp) {
+  if (avgTemp == null) return null;
+  if (avgTemp < -10) return "freezer";
+  if (avgTemp >= 0 && avgTemp <= 5) return "fridge";
+  if (avgTemp >= 15 && avgTemp <= 25) return "pantry";
+  return null;
+}
 
 function classify(avgTemp, prev) {
   if (avgTemp == null) return prev;
@@ -90,7 +108,7 @@ async function evaluate() {
   const now = Date.now();
   const window = history.filter((r) => now - r.t <= CFG.avgWindowMin * MIN && r.tempC != null);
   pod.avgTempC = avg(window.map((r) => r.tempC));
-  pod.env = classify(pod.avgTempC, pod.env);
+  pod.env = classify(pod.avgTempC, pod.env); // what the pod detects (used when location is "auto")
 
   await checkWarmFridge(now);
   await checkGas(now);
@@ -102,7 +120,7 @@ async function checkWarmFridge(now) {
   const warm = pod.avgTempC != null && pod.avgTempC > CFG.warmThresholdC;
   if (!warm) { pod.warmSince = null; pod.warmAlerted = false; return; }
   if (pod.warmSince == null) {
-    if (pod.env !== "fridge") return;        // only a fridge can be "too warm"
+    if (currentEnv() !== "fridge") return;   // only a fridge can be "too warm"
     pod.warmSince = now;
   }
   const mins = (now - pod.warmSince) / MIN;
@@ -131,7 +149,9 @@ async function checkGas(now) {
   const cooledDown = now - pod.lastGasAlert > CFG.gasCooldownMin * MIN;
   if (allAbove && rising && cooledDown) {
     pod.lastGasAlert = now;
-    const soon = activeItems().slice(0, 3).map((i) => `${i.name} (${fmtDays(i.remainingDays)})`);
+    // Ripening gas comes from fruit and veg, so list those first
+    const produce = activeItems().filter((i) => sectionOf(i) === "Produce");
+    const soon = (produce.length ? produce : activeItems()).slice(0, 3).map((i) => `${i.name} (${fmtDays(i.remainingDays)})`);
     await raise("ripening", "Something is ripening",
       `Gas level is ${Math.round((last.at(-1) / pod.gasBaseline - 1) * 100)}% above normal and climbing. ` +
       `Check these first: ${soon.join(", ") || "your produce"}.`,
@@ -169,6 +189,7 @@ export async function addItem({ name, emoji, life, days, image, kind, used = 0 }
     image: typeof image === "string" && image.startsWith("https://images.openfoodfacts.org/") ? image : null,
     // Generic food name used for recipe matching ("Kirkland 2% Milk" -> "Milk")
     kind: String(kind || est.kind || "").slice(0, 40) || null,
+    section: est.section,
     life: {
       fridge: Math.max(0.05, Number(full.fridge) || 5),
       freezer: Math.max(0.05, Number(full.freezer) || 60),
@@ -211,14 +232,17 @@ export async function setDaysLeft(id, days) {
   if (!item) throw new Error("Unknown item");
   days = Number(days);
   if (!(days >= 0) || days > 3650) throw Object.assign(new Error("Days must be between 0 and 3650"), { status: 400 });
-  const env = pod.env || "fridge";
-  if (days > item.life[env]) {
+  const c = conditions();
+  const env = c.lifeEnv;
+  // The user means "days left as things are now", so account for today's spoilage speed
+  const normalDays = days * speedOf(item, c).factor;
+  if (normalDays > item.life[env]) {
     // Longer than its normal life: stretch the base life, start fresh
-    const scale = days / item.life[env];
+    const scale = normalDays / item.life[env];
     for (const k of Object.keys(item.life)) item.life[k] *= scale;
     item.used = 0;
   } else {
-    item.used = 1 - days / item.life[env];
+    item.used = 1 - normalDays / item.life[env];
   }
   item.lastAged = Date.now();
   item.alerted = days < CFG.expiryAlertDays ? item.alerted : false; // can alert again later
@@ -274,30 +298,121 @@ function weekly() {
   };
 }
 
-// Which base life applies right now. Warm fridge time ages food at pantry speed.
-function rateEnv() {
-  if (pod.env === "fridge" && pod.avgTempC != null && pod.avgTempC > CFG.warmThresholdC) return "pantry";
-  return pod.env || "fridge";
+// ---------- Where the food is ----------
+export function realPodConnected() { return Date.now() - realPodSeenAt < 60_000; }
+
+// The user's setting wins; otherwise what the pod detects from temperature
+export const demoOn = () => settings.demo;
+
+// Is a pod (real or demo) sending readings right now?
+const sensing = () => pod.lastSeen != null && Date.now() - pod.lastSeen < 2 * MIN;
+
+// "pod" = real hardware, "demo" = simulated, "manual" = no readings, use the user's settings
+function mode() {
+  if (realPodConnected()) return "pod";
+  return sensing() ? "demo" : "manual";
 }
 
-// Age every active item by the time since we last aged it, at the current environment's rate
+// Temperature we go by: the pod's 15-min average, else what the user told us (may be null)
+function currentTemp() {
+  return sensing() ? pod.avgTempC : settings.tempC;
+}
+
+// The user's setting wins; otherwise detected from the pod's (or the user's) temperature
+export function currentEnv() {
+  if (settings.location !== "auto") return settings.location;
+  if (sensing()) return pod.env || "fridge";
+  return classify(settings.tempC, null) || "fridge";
+}
+
+export async function updateSettings({ location, tempC, demo }) {
+  const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
+  if (location !== undefined) {
+    if (!["auto", "fridge", "freezer", "pantry"].includes(location)) throw bad("Location must be auto, fridge, freezer or pantry");
+    settings.location = location;
+  }
+  if (tempC !== undefined) {
+    if (tempC === null || tempC === "") settings.tempC = null;
+    else if (Number(tempC) >= -30 && Number(tempC) <= 40) settings.tempC = Math.round(Number(tempC) * 10) / 10;
+    else throw bad("Temperature must be between -30 and 40 °C");
+  }
+  if (demo !== undefined) {
+    settings.demo = Boolean(demo);
+    if (!settings.demo) forgetDemoReadings();
+  }
+  await store.set("settings", settings);
+  await store.set("podState", pod);
+}
+
+// Turning the demo off: drop simulated readings so they don't count as real conditions
+function forgetDemoReadings() {
+  history = history.filter((r) => r.source !== "simulator");
+  if (!history.length) {
+    Object.assign(pod, { env: null, avgTempC: null, lastSeen: null, gasBaseline: null, warmSince: null, warmAlerted: false });
+  }
+}
+
+// ---------- Spoilage model ----------
+// Every item has a normal shelf life per place (foods.js). Right now it ages faster or slower than
+// normal depending on conditions the pod measures:
+//   * Temperature (Q10 rule): food spoils ~3x faster for every 10°C above the place's typical
+//     temperature (fridge 4°C, pantry 21°C), and slower when colder. A thawing freezer counts as a fridge.
+//   * Gas: the MQ-3 picks up ripening/fermenting gases. When it's above its normal baseline,
+//     fruit and veg age faster (up to 3x). Other food isn't affected by ripening gas.
+const TYPICAL_C = { fridge: 4, pantry: 21 };
+const Q10 = 3;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function recentGas() {
+  const g = history.filter((r) => r.gas != null).slice(-6).map((r) => r.gas);
+  return g.length ? avg(g) : null;
+}
+
+function conditions() {
+  const env = currentEnv();
+  const t = currentTemp();
+  // Which shelf life applies: a freezer warmer than -5°C is thawing, so treat its food as fridge food
+  const lifeEnv = env === "freezer" && t != null && t > -5 ? "fridge" : env;
+  const temp = lifeEnv === "freezer" || t == null ? 1 : clamp(Q10 ** ((t - TYPICAL_C[lifeEnv]) / 10), 0.5, 6);
+  const g = sensing() ? recentGas() : null;   // no pod, no gas reading
+  const ratio = pod.gasBaseline && g != null ? g / pod.gasBaseline : 1;
+  const gas = clamp(1 + Math.max(0, ratio - 1.1) * 2.5, 1, 3);
+  return { env, lifeEnv, temp, gas, gasAbovePct: Math.round((ratio - 1) * 100) };
+}
+
+function sectionOf(item) {
+  return item.section || findFood(item.kind || item.name)?.section || null;
+}
+
+// How fast this item is aging right now (1 = normal) and why
+function speedOf(item, c = conditions()) {
+  const gas = sectionOf(item) === "Produce" ? c.gas : 1;
+  // Short labels for the item list; the pod card explains the details
+  const reasons = [];
+  if (c.env === "freezer" && c.lifeEnv === "fridge") reasons.push("thawing");
+  else if (c.temp >= 1.15) reasons.push("warm");
+  if (gas >= 1.15) reasons.push("ripening gas");
+  return { factor: c.temp * gas, reasons };
+}
+
+// Age every active item by the time since we last aged it, at today's speed
 export async function ageItems() {
   const now = Date.now();
-  const env = rateEnv();
+  const c = conditions();
   const expiring = [];
   for (const item of Object.values(items)) {
     if (item.status !== "active") continue;
     const dtDays = ((now - item.lastAged) / DAY) * CFG.demoSpeed;
-    item.used = Math.min(1, item.used + dtDays / item.life[env]);
+    item.used = Math.min(1, item.used + (dtDays * speedOf(item, c).factor) / item.life[c.lifeEnv]);
     item.lastAged = now;
-    if (!item.alerted && remaining(item) < CFG.expiryAlertDays) {
+    if (!item.alerted && forecast(item, c).remainingDays < CFG.expiryAlertDays) {
       item.alerted = true;
       expiring.push(item);
     }
   }
   await store.set("items", items);
   if (expiring.length) {
-    const list = expiring.map((i) => `${i.name} (${fmtDays(remaining(i))})`).join(", ");
+    const list = expiring.map((i) => `${i.name} (${fmtDays(forecast(i, c).remainingDays)})`).join(", ");
     let ideas = "";
     try { ideas = onExpiring ? await onExpiring(expiring.map(({ id, name, kind }) => ({ id, name, kind }))) : ""; } catch (e) { console.warn("Recipe idea failed:", e.message); }
     await raise("expiry", "Eat me first!",
@@ -306,15 +421,22 @@ export async function ageItems() {
   }
 }
 
-function remaining(item) {
-  const env = pod.env || "fridge";
-  return Math.max(0, (1 - item.used) * item.life[env]);
+// Prediction: days left if today's conditions continue, vs. days left under normal conditions
+function forecast(item, c = conditions()) {
+  const left = Math.max(0, 1 - item.used);
+  const normalDays = left * item.life[c.lifeEnv];
+  const { factor, reasons } = speedOf(item, c);
+  return { remainingDays: normalDays / factor, normalDays, speed: factor, reasons };
 }
 
 export function activeItems() {
+  const c = conditions();
   return Object.values(items)
     .filter((i) => i.status === "active")
-    .map((i) => ({ ...i, remainingDays: remaining(i) }))
+    .map((i) => {
+      const f = forecast(i, c);
+      return { ...i, remainingDays: f.remainingDays, forecast: f };
+    })
     .sort((a, b) => a.remainingDays - b.remainingDays);
 }
 
@@ -344,6 +466,18 @@ export function snapshot() {
   return {
     pod: {
       ...pod,
+      location: settings.location,          // user setting ("auto" = detected)
+      tempSetting: settings.tempC,          // user's own temperature (used with no pod)
+      demo: settings.demo,
+      mode: mode(),                         // "pod" | "demo" | "manual"
+      tempC: currentTemp(),                 // temperature the forecasts use
+      env: currentEnv(),                    // where we treat the food as being
+      detectedEnv: sensing() ? pod.env : null, // what the pod's temperature says
+      // Manual setting that disagrees with a clear temperature reading
+      mismatch: sensing() && settings.location !== "auto" && detectNow(pod.avgTempC) && detectNow(pod.avgTempC) !== settings.location
+        ? detectNow(pod.avgTempC) : null,
+
+      conditions: (({ temp, gas, gasAbovePct }) => ({ temp, gas, gasAbovePct }))(conditions()),
       latest: history.at(-1) || null,
       warmMinutes: pod.warmSince ? Math.round((Date.now() - pod.warmSince) / MIN) : 0,
       history: history.slice(-90),
