@@ -460,6 +460,58 @@ export async function testAlert() {
   await raise("test", "Eat Me First test", "Phone alerts are working.", { priority: 3, tags: "white_check_mark" });
 }
 
+// ---------- What the pod's 16x2 LCD shows ----------
+// Plain ASCII only (LCDs can't show emoji or °), 16 characters per line, 2 lines per screen.
+const lcdText = (s) => String(s).normalize("NFKD").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim().slice(0, 16);
+// Final pass on a finished line: keep its spacing (alignment), just make it LCD-safe
+const lcdLine = (s) => String(s).normalize("NFKD").replace(/[^\x20-\x7E]/g, "").slice(0, 16);
+
+function lcdDays(d) {
+  if (d <= 0) return "EXPIRED";
+  if (d < 1) return `${Math.max(1, Math.round(d * 24))}h`;
+  return d < 10 ? `${d.toFixed(1)}d` : `${Math.round(d)}d`;
+}
+
+// "Milk" + "1.2d" -> "Milk        1.2d" (name cut to fit, days right-aligned)
+function lcdRow(left, right) {
+  left = lcdText(left);
+  right = lcdText(right);
+  const room = 16 - right.length - 1;
+  return (left.length > room ? left.slice(0, room) : left).padEnd(room) + " " + right;
+}
+
+export function podScreens() {
+  const c = conditions();
+  const t = currentTemp();
+  const screens = [];
+
+  const status = c.temp >= 1.15 ? `WARM! food x${c.temp.toFixed(1)}`
+    : c.gas >= 1.15 ? `Ripening gas +${c.gasAbovePct}%`
+    : c.env === "freezer" && c.lifeEnv === "fridge" ? "THAWING!"
+    : "Conditions OK";
+  screens.push([lcdRow(c.env.toUpperCase(), t != null ? `${t.toFixed(1)}C` : ""), status]);
+
+  const list = activeItems();
+  if (list.length) {
+    screens.push(["EAT FIRST:", lcdRow(list[0].name, lcdDays(list[0].remainingDays))]);
+    if (list[1]) screens.push(["THEN:", lcdRow(list[1].name, lcdDays(list[1].remainingDays))]);
+  } else {
+    screens.push(["Nothing tracked", "Add food in app"]);
+  }
+
+  // Most recent alert from the last hour
+  const recent = alerts.find((a) => a.type !== "test" && Date.now() - a.t < 60 * MIN);
+  if (recent) {
+    const head = { safety: "!! FRIDGE WARM", ripening: "!! RIPENING GAS", expiry: "!! EAT ME FIRST" }[recent.type] || "!! ALERT";
+    const detail = recent.type === "expiry" ? (list[0] ? lcdText(list[0].name) : "Check the app") : "Check the app";
+    screens.push([head, detail]);
+  }
+
+  const w = weekly();
+  screens.push([`${list.length} item${list.length === 1 ? "" : "s"} in here`, `Saved ${w.eaten} Waste ${w.tossed}`]);
+  return { screens: screens.map((sc) => sc.map(lcdLine)), alert: Boolean(recent) };
+}
+
 // ---------- Snapshot for the web app ----------
 export function snapshot() {
   const all = Object.values(items);
@@ -478,6 +530,7 @@ export function snapshot() {
         ? detectNow(pod.avgTempC) : null,
 
       conditions: (({ temp, gas, gasAbovePct }) => ({ temp, gas, gasAbovePct }))(conditions()),
+      lcd: podScreens(),                    // what the pod's screen shows
       latest: history.at(-1) || null,
       warmMinutes: pod.warmSince ? Math.round((Date.now() - pod.warmSince) / MIN) : 0,
       history: history.slice(-90),

@@ -97,13 +97,43 @@ WARM_ALERT_MIN=1
 
 **Spoilage forecast:** each item ages faster or slower than normal. Temperature follows the Q10 rule (about 3× faster per +10°C vs a typical 4°C fridge or 21°C pantry). Ripening gas above the pod's normal level speeds up fruit and veg only (up to 3×). Items show e.g. "⚡ 1 day sooner · warm".
 
-## Flashing the real pod (step 2)
-1. Open `firmware/eat_me_first_pod/eat_me_first_pod.ino` in the Arduino IDE.
-2. Fill in `WIFI_SSID`, `WIFI_PASSWORD` (2.4 GHz WiFi), and `SERVER_URL` (your Render link + `/api/pod/reading`).
-3. Optional but recommended: pick a secret, set it as `POD_KEY` in the sketch **and** in Render → Environment.
-4. Upload. Serial Monitor (115200) shows each reading, and the LED blinks once per successful send. The app header switches to **pod live**.
+## Connecting the hardware to the app
+The pod is an **ESP32** with a temperature/humidity sensor, a gas sensor and a **16x2 LCD**. It talks to the app over WiFi:
 
-The pod sends `{"seq", "tempC", "humidity", "gas"}` every 5 s to `POST /api/pod/reading`. Gas is sent as `null` for the first 3 minutes while the MQ-3 heater warms up.
+```
+ ESP32 pod ──(every 5 s: temperature, humidity, gas)──▶ app server (Render)
+     ▲                                                     │
+     └──────(reply: what the LCD should show)─────────────┘
+ Your phone ◀──── app (same server): items, forecasts, alerts, the "📟 Pod screen" preview
+```
+
+### Wiring (ESP32 pin by pin)
+| Part | Part pin | ESP32 pin |
+|---|---|---|
+| **DHT22** (temp + humidity) | + / VCC | 3V3 |
+| | out / DATA | GPIO 4 (bare 4-pin sensor: 10kΩ between DATA and 3V3) |
+| | − / GND | GND |
+| **MQ-3** (gas) | VCC | VIN / 5V |
+| | GND | GND |
+| | AO | **voltage divider** → GPIO 34: AO ─10kΩ─┬─20kΩ─ GND, with the middle point going to GPIO 34 |
+| **16x2 LCD with I2C backpack** | VCC | VIN / 5V |
+| | GND | GND |
+| | SDA | GPIO 21 |
+| | SCL | GPIO 22 |
+
+All GNDs connect together. The LCD's I2C address (0x27 or 0x3F) is found automatically. If the screen lights up but shows nothing, turn the small blue contrast screw on the backpack.
+
+### Flash it
+1. In the Arduino IDE, install the board package **esp32 by Espressif**, then these libraries: **DHT sensor library**, **Adafruit Unified Sensor**, **LiquidCrystal I2C** (Frank de Brabander).
+2. Open `firmware/eat_me_first_pod/eat_me_first_pod.ino` and fill in `WIFI_SSID`, `WIFI_PASSWORD` (2.4 GHz WiFi) and `SERVER_URL` (your Render link + `/api/pod/reading`).
+3. Optional but recommended: set the same secret `POD_KEY` in the sketch **and** in Render → Environment.
+4. Board: **ESP32 Dev Module** → Upload → Serial Monitor at 115200.
+
+### What you'll see
+- **LCD:** "Eat Me First / WiFi connecting" → "WiFi connected", then screens cycling every 3 s: where the pod is and its temperature, **EAT FIRST** + the most urgent item, any alert (the backlight flashes), and the weekly score.
+- **App:** the header switches from *no pod* to **pod live**. The pod card shows real readings plus a 📟 preview of the LCD.
+- **No WiFi or app down:** the LCD shows the pod's own readings ("App offline" / "No WiFi").
+- The onboard LED blinks once per reading sent, twice if the app had a problem, and three times if there's no WiFi.
 
 ```
 firmware/   ESP32 sketch (step 1: read sensors)

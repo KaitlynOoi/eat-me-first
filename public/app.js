@@ -78,6 +78,7 @@ function render() {
       <button class="link" data-open-settings>Set temperature</button>`;
   }
   renderSpeed(pod.conditions);
+  renderLcd();
   renderSettings();
   $("demoCard").classList.toggle("hidden", !(pod.demo && pod.mode !== "pod"));
   $("podTemp").textContent = fmt(pod.latest?.tempC);
@@ -145,6 +146,18 @@ function render() {
   if (key !== recipesKey) { recipesKey = key; loadRecipes(); }
   renderUrgent();
 }
+
+// ---------- Pod screen preview (same 16x2 text the ESP32's LCD shows) ----------
+let lcdIndex = 0;
+function renderLcd() {
+  const screens = state?.pod?.lcd?.screens || [];
+  if (!screens.length) return;
+  lcdIndex %= screens.length;
+  const [top, bottom] = screens[lcdIndex];
+  $("lcd").textContent = `${top.padEnd(16)}\n${(bottom || "").padEnd(16)}`;
+  $("lcd").classList.toggle("alert", top.startsWith("!!"));
+}
+setInterval(() => { lcdIndex++; renderLcd(); }, 3000);
 
 // ---------- Spoilage forecast ----------
 // "⚡ 1.2 days sooner · ripening gas +40%" when conditions make an item spoil noticeably faster

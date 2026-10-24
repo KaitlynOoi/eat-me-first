@@ -25,6 +25,23 @@ const route = (fn) => async (req, res) => {
 
 app.get("/api/state", route(() => ({ ...engine.snapshot(), sim: { scenario: sim.getScenario(), scenarios: sim.SCENARIOS }, photoScan: claudeEnabled() })));
 
+
+// What the pod's LCD should show, as plain text so the ESP32 needs no JSON library:
+// first line "ALERT" or "OK", then 2 lines per screen. The pod gets this as the reply
+// to its reading (POST /api/pod/reading?lcd=1); GET works too for testing.
+function lcdReply(res) {
+  const { screens, alert } = engine.podScreens();
+  res.type("text/plain").send([alert ? "ALERT" : "OK", ...screens.flat()].join("\n"));
+}
+app.get("/api/pod/screen.txt", (req, res) => lcdReply(res));
+app.use("/api/pod/reading", (req, res, next) => {
+  if (req.method !== "POST" || req.query.lcd !== "1") return next();
+  const json = res.json.bind(res);
+  // Swap the JSON reply for the LCD text, but keep errors (401/400) as they are
+  res.json = (body) => (res.statusCode === 200 ? lcdReply(res) : json(body));
+  next();
+});
+
 // The ESP32 can POST here directly instead of (or as well as) writing to Firebase
 let directSeq = 0;
 app.post("/api/pod/reading", route(async (req) => {
@@ -40,8 +57,9 @@ app.post("/api/pod/reading", route(async (req) => {
   const reading = { tempC, humidity, gas, seq: req.body.seq != null ? `p${req.body.seq}` : `d${++directSeq}`, source: "pod" };
   await store.set("pod/latest", reading);
   await engine.ingest(reading);
-  return { ok: true };
+  return { ok: true, ...engine.podScreens() };
 }));
+
 
 app.post("/api/settings", route(async (req) => {
   const { location, tempC, demo } = req.body;
