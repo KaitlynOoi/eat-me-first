@@ -422,10 +422,71 @@ function getScanner() {
   return scanner;
 }
 
+// ---- Camera permission: explain first, then let the phone ask ----
+const CAM_OK_KEY = "emf-camera-ok";
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isAndroid = /Android/.test(navigator.userAgent);
+
+async function cameraPermission() {
+  try { return (await navigator.permissions.query({ name: "camera" })).state; } // granted | prompt | denied
+  catch { return "unknown"; } // older Safari can't tell us
+}
+function rememberedCameraOk() {
+  try { return localStorage.getItem(CAM_OK_KEY) === "1"; } catch { return false; }
+}
+
+function showCamAsk() {
+  bcStatus("");
+  $("camAsk").innerHTML = `
+    <div class="cam-icon">📷</div>
+    <b class="cam-title">Allow camera to scan barcodes</b>
+    <p class="muted">The camera is only used while this screen is open, to read barcodes. Nothing is recorded or uploaded.</p>
+    <button class="wide" data-cam="allow">Allow camera</button>
+    <p class="muted small">Your phone will ask next. Tap <b>Allow</b>.</p>`;
+  $("camAsk").classList.remove("hidden");
+}
+
+function showCamBlocked() {
+  bcStatus("");
+  const chromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
+  const steps = chromeIOS
+    ? ["Open your iPhone <b>Settings</b>", "Tap <b>Apps → Chrome</b>", "Turn on <b>Camera</b>", "Come back and tap <b>Try again</b>"]
+    : isIOS
+      ? ["Tap <b>aA</b> in the address bar", "Tap <b>Website Settings</b>", "Set <b>Camera</b> to <b>Allow</b>", "Tap <b>Try again</b>"]
+      : isAndroid
+        ? ["Tap the <b>⚙ / 🔒</b> icon next to the web address", "Tap <b>Permissions → Camera</b>", "Choose <b>Allow</b>", "Tap <b>Try again</b>"]
+        : ["Click the <b>🔒</b> icon next to the web address", "Set <b>Camera</b> to <b>Allow</b>", "Click <b>Try again</b>"];
+  $("camAsk").innerHTML = `
+    <div class="cam-icon">🚫</div>
+    <b class="cam-title">Camera is blocked for this site</b>
+    <ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
+    <button class="wide" data-cam="allow">Try again</button>
+    <p class="muted small">Or skip the camera: use a photo of the barcode or type its number below.</p>`;
+  $("camAsk").classList.remove("hidden");
+  $("bcAlt").open = true;
+}
+
+async function openScanner() {
+  $("barcodeSheet").showModal();
+  $("bcAlt").open = false;
+  $("bcResult").innerHTML = "";
+  $("camAsk").classList.add("hidden");
+  if (!window.isSecureContext) {
+    bcStatus("The camera only works on the https:// link of this app. Use a photo or type the number below.");
+    $("bcAlt").open = true;
+    return;
+  }
+  const state = await cameraPermission();
+  if (state === "granted" || (state === "unknown" && rememberedCameraOk())) startCamera();
+  else if (state === "denied") showCamBlocked();
+  else showCamAsk();
+}
+
 async function startCamera() {
   const s = getScanner();
   if (!s) return bcStatus("Scanner didn't load. Use a photo or type the number below.");
   $("bcResult").innerHTML = "";
+  $("camAsk").classList.add("hidden");
   bcStatus("Starting camera…");
   try {
     await s.start(
@@ -435,10 +496,20 @@ async function startCamera() {
       () => {} // "no barcode in this frame" - ignore
     );
     scanning = true;
+    try { localStorage.setItem(CAM_OK_KEY, "1"); } catch {}
     bcStatus("Point the camera at the barcode and hold steady");
-  } catch {
-    bcStatus("Can't open the camera. Allow camera access, or use a photo / type the number below.");
-    $("bcAlt").open = true;
+  } catch (err) {
+    const msg = String(err?.name || err);
+    if (/NotAllowed|Permission|denied/i.test(msg)) {
+      try { localStorage.removeItem(CAM_OK_KEY); } catch {}
+      showCamBlocked();
+    } else if (/NotFound|Overconstrained|no camera/i.test(msg)) {
+      bcStatus("No camera found on this device. Use a photo or type the number below.");
+      $("bcAlt").open = true;
+    } else {
+      bcStatus("Can't open the camera right now. Close other apps using it, or use a photo / type the number below.");
+      $("bcAlt").open = true;
+    }
   }
 }
 
@@ -509,10 +580,9 @@ async function addScannedProduct() {
   startCamera(); // groceries come in batches: go straight to the next one
 }
 
-$("barcodeBtn").addEventListener("click", () => {
-  $("barcodeSheet").showModal();
-  $("bcAlt").open = false;
-  startCamera();
+$("barcodeBtn").addEventListener("click", openScanner);
+$("camAsk").addEventListener("click", (e) => {
+  if (e.target.closest("[data-cam]")) startCamera(); // this tap is what lets the phone show its own prompt
 });
 $("bcClose").addEventListener("click", () => $("barcodeSheet").close());
 $("barcodeSheet").addEventListener("close", stopCamera);

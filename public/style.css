@@ -197,3 +197,9 @@ button.wide, .button.wide { display: block; width: 100%; }
 .days-row input { width: 80px; }
 #bcResult input[type=text] { width: 100%; margin-bottom: 8px; }
 #bcResult .row button { flex: 1; }
+.cam-ask { text-align: center; padding: 8px 4px 4px; }
+.cam-ask .cam-icon { font-size: 44px; }
+.cam-ask .cam-title { display: block; font-size: 17px; margin: 4px 0; }
+.cam-ask ol { text-align: left; margin: 10px auto; padding-left: 22px; max-width: 320px; line-height: 1.7; }
+.cam-ask .wide { margin-top: 8px; }
+.small { font-size: 13px; }
