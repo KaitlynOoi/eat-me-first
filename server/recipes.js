@@ -96,6 +96,7 @@ export async function suggestRecipes(items) {
       uses: used.map((i) => i.name),
       usesIds: used.map((i) => i.id),
       missing: missing.slice(0, 5),
+      missingAll: missing,
       missingCount: missing.length,
       score: used.reduce((s, i) => s + weight(i.remainingDays), 0) - missing.length * 0.3,
     };

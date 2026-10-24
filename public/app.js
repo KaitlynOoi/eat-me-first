@@ -52,15 +52,13 @@ const fmt = (v, digits = 1) => (v == null ? "--" : Number(v).toFixed(digits));
 
 // ---------- Rendering ----------
 function render() {
-  const { pod, items, alerts, sim, config, stats } = state;
+  const { pod, items, alerts, sim, config } = state;
   const live = pod.lastSeen && Date.now() - pod.lastSeen < 15000;
   $("podStatus").textContent = live ? (pod.latest?.source === "simulator" ? "demo pod" : "pod live") : "pod offline";
   $("podStatus").classList.toggle("live", Boolean(live));
 
-  $("stats").innerHTML = `
-    <div><b>${items.length}</b><small>in the fridge</small></div>
-    <div><b>${stats.eaten}</b><small>🎉 eaten (saved)</small></div>
-    <div><b>${stats.tossed}</b><small>🗑️ tossed (wasted)</small></div>`;
+  renderWeekly();
+  renderShopping();
 
   // Pod
   $("podEnv").textContent = ENV_LABEL[pod.env] || "Detecting…";
@@ -85,7 +83,7 @@ function render() {
     <ul class="items">${g.items.map((i) => `
       <li class="${g.cls}">
         <span class="emoji">${i.emoji}</span>
-        <div class="info"><div class="name">${esc(i.name)}</div><div class="left">${fmtLeft(i.remainingDays)}</div></div>
+        <div class="info" data-edit="${i.id}"><div class="name">${esc(i.name)}</div><div class="left">${fmtLeft(i.remainingDays)}</div></div>
         <div class="actions">
           <button class="ate" data-done="${i.id}" data-status="eaten" data-name="${esc(i.name)}">✓ Ate it</button>
           <button class="toss" data-done="${i.id}" data-status="tossed" data-name="${esc(i.name)}">Tossed</button>
@@ -122,11 +120,92 @@ function render() {
       `<button data-add="${esc(c.name)}"><span>${c.emoji}</span>${esc(c.name)}</button>`).join("");
   }
 
-  // Re-fetch recipes whenever what's in the fridge changes
-  const key = items.map((i) => i.id).sort().join(",");
+  // Re-fetch recipes whenever what's in the fridge (or how urgent it is) changes
+  const key = items.map((i) => `${i.id}:${i.remainingDays < 1 ? 2 : i.remainingDays < 2 ? 1 : i.remainingDays < 4 ? 0 : ""}`).sort().join(",");
   if (key !== recipesKey) { recipesKey = key; loadRecipes(); }
   renderUrgent();
 }
+
+// ---------- Weekly waste summary ----------
+function renderWeekly() {
+  const w = state.weekly;
+  const total = w.eaten + w.tossed;
+  $("weekly").innerHTML = `
+    <h2>📊 This week</h2>
+    ${total ? `
+      <div class="nums">
+        <div><b>${w.eaten}</b><small>🎉 eaten</small></div>
+        <div><b>${w.tossed}</b><small>🗑️ tossed</small></div>
+        <div><b>${w.saveRate}%</b><small>saved</small></div>
+      </div>
+      <div class="bar" title="${w.saveRate}% saved"><span style="width:${w.saveRate}%"></span></div>
+      <p>≈ <b>$${w.moneySaved}</b> of food saved${w.moneyWasted ? `, $${w.moneyWasted} wasted` : ""}.</p>
+      ${w.mostTossed && w.mostTossed.count > 1
+        ? `<p>💡 You tossed <b>${esc(w.mostTossed.name)}</b> ${w.mostTossed.count}× this week. Try buying less of it.</p>`
+        : w.tossed === 0 ? `<p>🌱 Nothing wasted so far this week!</p>` : ""}`
+    : `<p class="muted">Tap <b>✓ Ate it</b> or <b>Tossed</b> when food leaves the fridge to see your weekly score.</p>`}`;
+}
+
+// ---------- Shopping list ----------
+function renderShopping() {
+  const list = state.shopping;
+  const open = list.filter((s) => !s.done).length;
+  $("shopBadge").textContent = open;
+  $("shopBadge").classList.toggle("hidden", !open);
+  $("shopEmpty").classList.toggle("hidden", list.length > 0);
+  $("shopClear").classList.toggle("hidden", !list.some((s) => s.done));
+  $("shopList").innerHTML = list.map((s) => `
+    <li data-shop="${s.id}" class="${s.done ? "done" : ""}">
+      <span class="box">${s.done ? "✓" : ""}</span>
+      <span class="name">${esc(s.name)}${s.recipe ? `<span class="from">for ${esc(s.recipe)}</span>` : ""}</span>
+    </li>`).join("");
+}
+
+async function addToShopping(names, recipe) {
+  const { added } = await api("/api/shopping", { names, recipe });
+  if (!added.length) return toast("Already on your list");
+  toast(`Added ${added.length} to shopping list`, async () => {
+    await api("/api/shopping/remove", { ids: added.map((a) => a.id) });
+    refresh();
+  });
+  refresh();
+}
+
+// ---------- Edit an item ----------
+let editing = null;
+function openEdit(id) {
+  editing = state.items.find((i) => i.id === id);
+  if (!editing) return;
+  $("editTitle").textContent = `${editing.emoji} ${editing.name}`;
+  $("editDays").value = Math.round(editing.remainingDays * 2) / 2;
+  $("editSheet").showModal();
+}
+$("editSheet").addEventListener("click", (e) => {
+  const q = e.target.closest("[data-quick]")?.dataset.quick;
+  if (!q) return;
+  const cur = Number($("editDays").value) || 0;
+  $("editDays").value = q === "half" ? Math.round(cur) / 2 : q.startsWith("+") ? cur + Number(q) : Number(q);
+});
+$("editSheet").addEventListener("close", async () => {
+  if ($("editSheet").returnValue !== "save" || !editing) return;
+  const item = editing;
+  const before = Math.round(item.remainingDays * 100) / 100;
+  try {
+    await api(`/api/items/${item.id}/days`, { days: Number($("editDays").value) });
+    toast(`${item.name}: ${fmtLeft(Number($("editDays").value))}`, async () => {
+      await api(`/api/items/${item.id}/days`, { days: before });
+      refresh();
+    });
+    refresh();
+  } catch (err) { toast(err.message); }
+});
+$("editRemove").addEventListener("click", async () => {
+  const item = editing;
+  $("editSheet").close("cancel");
+  await api(`/api/items/${item.id}/status`, { status: "removed" });
+  toast(`Removed ${item.name}`, restore(item.id, item.name));
+  refresh();
+});
 
 // "Cook today" list: shared by the Fridge card and the Recipes tab
 function urgentHtml() {
@@ -162,6 +241,7 @@ function renderRecipes() {
             <div class="chipline">${r.missingCount
               ? `<span class="muted chip">Need to buy:</span>` + r.missing.map((m) => `<span class="chip need">${esc(m)}</span>`).join("") + (r.missingCount > r.missing.length ? `<span class="chip need">+${r.missingCount - r.missing.length} more</span>` : "")
               : `<span class="chip have">You have everything!</span>`}</div>
+            ${r.missingCount ? `<button class="addlist" data-shoprecipe="${esc(r.id)}">🛒 Add ${r.missingCount} to list</button>` : ""}
           </div>
         </li>`;
     }).join("")
@@ -214,11 +294,27 @@ async function addItems(list) {
 }
 
 document.addEventListener("click", async (e) => {
+  const edit = e.target.closest("[data-edit]");
+  if (edit) return openEdit(edit.dataset.edit);
+  const shop = e.target.closest("[data-shop]");
+  if (shop) {
+    await api(`/api/shopping/${shop.dataset.shop}/toggle`, {}).catch((err) => toast(err.message));
+    return refresh();
+  }
   const btn = e.target.closest("button");
   if (!btn || btn.id === "toastUndo") return;
   try {
     if (btn.dataset.tab) showTab(btn.dataset.tab);
     else if (btn.dataset.tabJump) showTab(btn.dataset.tabJump);
+    else if (btn.dataset.shoprecipe) {
+      const r = recipes.fridge.find((x) => x.id === btn.dataset.shoprecipe);
+      await addToShopping(r.missingAll, r.title);
+    } else if (btn.id === "shopClear") {
+      const done = state.shopping.filter((s) => s.done);
+      await api("/api/shopping/remove", { ids: done.map((s) => s.id) });
+      toast(`Cleared ${done.length} item(s)`);
+      refresh();
+    }
     else if (btn.dataset.done) {
       const { done: id, status, name } = btn.dataset;
       await api(`/api/items/${id}/status`, { status });
@@ -250,6 +346,13 @@ document.addEventListener("click", async (e) => {
   } catch (err) {
     toast(err.message);
   }
+});
+
+$("shopAdd").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("shopName").value.trim();
+  if (!name) return;
+  try { await addToShopping([name], null); $("shopName").value = ""; } catch (err) { toast(err.message); }
 });
 
 // "Add anything": we only know fridge days, so estimate the rest

@@ -16,7 +16,7 @@
   <main>
     <!-- FRIDGE TAB -->
     <section id="tab-fridge" class="tab active">
-      <div class="stats" id="stats"></div>
+      <div class="card weekly" id="weekly"></div>
 
       <!-- Urgent: what to cook today -->
       <div id="cookToday" class="card urgent-card hidden">
@@ -89,6 +89,17 @@
       <div id="quickAdd" class="quick"></div>
     </section>
 
+    <!-- SHOPPING LIST TAB -->
+    <section id="tab-list" class="tab">
+      <form id="shopAdd" class="row shop-add">
+        <input id="shopName" placeholder="Add to shopping list…" maxlength="60" required>
+        <button type="submit">Add</button>
+      </form>
+      <p class="muted" id="shopEmpty">Your list is empty. On the Recipes tab, tap “Add to list” to save what a recipe needs.</p>
+      <ul id="shopList" class="shop"></ul>
+      <button id="shopClear" class="secondary hidden">Clear checked items</button>
+    </section>
+
     <!-- RECIPES TAB -->
     <section id="tab-recipes" class="tab">
       <div id="recipesUrgentBox" class="hidden">
@@ -108,7 +119,31 @@
     <button data-tab="fridge" class="active">🧊<span>Fridge</span></button>
     <button data-tab="add">➕<span>Add</span></button>
     <button data-tab="recipes">🍳<span>Recipes</span></button>
+    <button data-tab="list">🛒<span>List <b id="shopBadge" class="badge hidden"></b></span></button>
   </nav>
+
+  <!-- Edit an item -->
+  <dialog id="editSheet" class="sheet">
+    <form method="dialog" id="editForm">
+      <h2 id="editTitle"></h2>
+      <label class="muted" for="editDays">Days left</label>
+      <div class="row">
+        <input id="editDays" type="number" min="0" step="0.5" required>
+        <span class="muted">days</span>
+      </div>
+      <div class="chips">
+        <button type="button" data-quick="0.5">Use today</button>
+        <button type="button" data-quick="half">Opened it (½)</button>
+        <button type="button" data-quick="+1">+1 day</button>
+        <button type="button" data-quick="+3">+3 days</button>
+      </div>
+      <div class="row">
+        <button type="submit" value="save" id="editSave">Save</button>
+        <button type="submit" value="cancel" class="secondary" formnovalidate>Cancel</button>
+      </div>
+      <button type="button" class="link danger" id="editRemove">Remove: added by mistake</button>
+    </form>
+  </dialog>
 
   <div id="toast" class="toast hidden"><span id="toastMsg"></span><button id="toastUndo" class="hidden">Undo</button></div>
   <script src="app.js"></script>

@@ -12,6 +12,17 @@ A sensor pod for your fridge, freezer or pantry, plus a phone web app. It tracks
 | Adding food | Quick-add buttons | Free |
 | Photo scan (optional) | Claude Haiku | Under 1 cent per photo |
 
+## Features
+- **Fridge tab:**
+  - A weekly score: eaten vs tossed, % saved, ≈ $ saved, and which food you waste most.
+  - A **Cook these today** card with a recipe for each item expiring within 2 days.
+  - Food grouped into Eat today, Eat soon and Fresh.
+  - Tap an item to edit its days left: Opened it, +1 day, Use today, or Remove if you added it by mistake.
+- **✓ Ate it / Tossed:** each one counts toward your score, every action has **Undo**, and **Recently removed** has a Restore button for anything you got wrong.
+- **Add tab:** photo scan (optional), Add anything (name + days), and quick-add buttons.
+- **Recipes tab:** recipes ranked by how much soon-to-expire food they use. Chips show what you have and what you'd need to buy, and **🛒 Add to list** sends the missing items to your shopping list.
+- **List tab:** a shopping list. Tap to tick items off, then clear the checked ones.
+
 ## Run it
 
 You need [Node.js 18+](https://nodejs.org).

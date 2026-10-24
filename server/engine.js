@@ -24,6 +24,7 @@ const GAS_WARMUP_READINGS = 10;
 let history = [];          // [{t, tempC, humidity, gas}]
 let items = {};            // id -> item
 let alerts = [];           // newest first
+let shopping = {};         // id -> {id, name, done, recipe, addedAt}
 let pod = {
   env: null,               // "freezer" | "fridge" | "pantry" | null
   avgTempC: null,
@@ -40,6 +41,7 @@ export function setExpiringHook(fn) { onExpiring = fn; }
 
 export async function load() {
   items = (await store.get("items")) || {};
+  shopping = (await store.get("shopping")) || {};
   const savedPod = await store.get("podState");
   if (savedPod) pod = { ...pod, ...savedPod, warmSince: null, warmAlerted: false };
   const savedAlerts = await store.get("alerts");
@@ -193,6 +195,76 @@ export async function restore(id) {
   await store.set(`items/${id}`, item);
 }
 
+// Fix an item's estimate ("I opened it", "it's going off early", "the date says 10 days").
+// Sets remaining life in the current environment; other environments scale with it.
+export async function setDaysLeft(id, days) {
+  const item = items[id];
+  if (!item) throw new Error("Unknown item");
+  days = Number(days);
+  if (!(days >= 0) || days > 3650) throw Object.assign(new Error("Days must be between 0 and 3650"), { status: 400 });
+  const env = pod.env || "fridge";
+  if (days > item.life[env]) {
+    // Longer than its normal life: stretch the base life, start fresh
+    const scale = days / item.life[env];
+    for (const k of Object.keys(item.life)) item.life[k] *= scale;
+    item.used = 0;
+  } else {
+    item.used = 1 - days / item.life[env];
+  }
+  item.lastAged = Date.now();
+  item.alerted = days < CFG.expiryAlertDays ? item.alerted : false; // can alert again later
+  await store.set(`items/${id}`, item);
+}
+
+// ---------- Shopping list ----------
+export async function addToShopping(names, recipe = null) {
+  const have = new Set(Object.values(shopping).filter((s) => !s.done).map((s) => s.name.toLowerCase()));
+  const added = [];
+  for (const raw of names) {
+    const name = String(raw).trim().slice(0, 60);
+    if (!name || have.has(name.toLowerCase())) continue;
+    have.add(name.toLowerCase());
+    const entry = { id: crypto.randomUUID().slice(0, 8), name, done: false, recipe, addedAt: Date.now() };
+    shopping[entry.id] = entry;
+    added.push(entry);
+  }
+  await store.set("shopping", shopping);
+  return added;
+}
+
+export async function toggleShopping(id) {
+  if (!shopping[id]) throw new Error("Unknown list item");
+  shopping[id].done = !shopping[id].done;
+  await store.set("shopping", shopping);
+}
+
+export async function removeShopping(ids) {
+  for (const id of ids) delete shopping[id];
+  await store.set("shopping", shopping);
+}
+
+// ---------- Weekly waste summary ----------
+const ITEM_VALUE = 2.5; // rough average $ per grocery item, for the "money saved" line
+
+function weekly() {
+  const since = Date.now() - 7 * DAY;
+  const week = Object.values(items).filter((i) => i.closedAt >= since);
+  const eaten = week.filter((i) => i.status === "eaten");
+  const tossed = week.filter((i) => i.status === "tossed");
+  const counts = {};
+  for (const i of tossed) counts[i.name] = (counts[i.name] || 0) + 1;
+  const mostTossed = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  const total = eaten.length + tossed.length;
+  return {
+    eaten: eaten.length,
+    tossed: tossed.length,
+    saveRate: total ? Math.round((eaten.length / total) * 100) : null,
+    moneySaved: Math.round(eaten.length * ITEM_VALUE),
+    moneyWasted: Math.round(tossed.length * ITEM_VALUE),
+    mostTossed: mostTossed ? { name: mostTossed[0], count: mostTossed[1] } : null,
+  };
+}
+
 // Which base life applies right now. Warm fridge time ages food at pantry speed.
 function rateEnv() {
   if (pod.env === "fridge" && pod.avgTempC != null && pod.avgTempC > CFG.warmThresholdC) return "pantry";
@@ -277,6 +349,8 @@ export function snapshot() {
       eaten: all.filter((i) => i.status === "eaten").length,
       tossed: all.filter((i) => i.status === "tossed").length,
     },
+    weekly: weekly(),
+    shopping: Object.values(shopping).sort((a, b) => a.done - b.done || b.addedAt - a.addedAt),
     alerts: alerts.slice(0, 20),
     catalog: CATALOG,
     config: { ...CFG, ntfyTopic: process.env.NTFY_TOPIC || null, firebase: store.usingFirebase },

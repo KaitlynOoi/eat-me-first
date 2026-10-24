@@ -51,6 +51,12 @@ app.post("/api/items/:id/status", route(async (req) => {
 
 app.post("/api/items/:id/restore", route(async (req) => { await engine.restore(req.params.id); return { ok: true }; }));
 
+app.post("/api/items/:id/days", route(async (req) => { await engine.setDaysLeft(req.params.id, req.body.days); return { ok: true }; }));
+
+app.post("/api/shopping", route(async (req) => ({ added: await engine.addToShopping(req.body.names || [], req.body.recipe || null) })));
+app.post("/api/shopping/:id/toggle", route(async (req) => { await engine.toggleShopping(req.params.id); return { ok: true }; }));
+app.post("/api/shopping/remove", route(async (req) => { await engine.removeShopping(req.body.ids || []); return { ok: true }; }));
+
 app.post("/api/scan", route(async (req) => ({ items: await scanGroceries(req.body.image) })));
 app.post("/api/recipes", route(async () => {
   return suggestRecipes(engine.activeItems());
