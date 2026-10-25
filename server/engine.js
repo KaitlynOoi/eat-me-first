@@ -38,6 +38,7 @@ let settings = {
   location: "auto",        // "auto" (detect from temperature) | "fridge" | "freezer" | "pantry"
   tempC: null,             // the user's own temperature, used when no pod is sending readings
   demo: false,             // run the demo pod (simulated readings) while no real pod is connected
+  thermRFixed: 3310,       // thermistor module's fixed/trim resistor (ohms), set by calibrateTemp()
 };
 let realPodSeenAt = 0;     // last reading from real hardware (not the simulator)
 let lastSeq = null;
@@ -70,6 +71,7 @@ export async function ingest(reading) {
     tempC: num0(reading.tempC),
     humidity: num0(reading.humidity),
     gas: num0(reading.gas),
+    thermMv: num0(reading.thermMv),   // raw thermistor voltage, so a recalibration can redo old readings
     source: reading.source || "pod",
   });
   history = history.filter((r) => t - r.t <= HISTORY_KEEP_MS);
@@ -324,6 +326,36 @@ export function currentEnv() {
   if (settings.location !== "auto") return settings.location;
   if (sensing()) return pod.env || "fridge";
   return classify(settings.tempC, null) || "fridge";
+}
+
+// ---------- Thermistor calibration ----------
+// The pod sends the thermistor module's raw AO voltage; we turn it into degrees C here, so the
+// calibration can change without reflashing. Standard 10k NTC (B = 3950) between + and AO,
+// powered from 3.3 V; the module's fixed/trim resistor is what calibration solves for.
+const THERM = { vccMv: 3300, r25: 10000, beta: 3950 };
+
+export function thermToC(mv) {
+  const ratio = mv / THERM.vccMv;
+  if (!(ratio > 0.01 && ratio < 0.99)) return null;
+  const r = settings.thermRFixed * (1 / ratio - 1);
+  return 1 / (1 / 298.15 + Math.log(r / THERM.r25) / THERM.beta) - 273.15;
+}
+
+// "The sensor is at actualC right now": solve for the resistor that makes that true, then
+// redo every stored reading with it so the averages are right immediately
+export async function calibrateTemp(actualC) {
+  actualC = Number(actualC);
+  if (!(actualC >= -30 && actualC <= 50)) throw Object.assign(new Error("Enter a temperature between -30 and 50 °C"), { status: 400 });
+  const recent = history.filter((r) => r.thermMv != null).slice(-6).map((r) => r.thermMv).sort((a, b) => a - b);
+  if (!recent.length) throw Object.assign(new Error("No temperature sensor reading yet. Is the pod connected?"), { status: 400 });
+  const mv = recent[Math.floor(recent.length / 2)];
+  const rTherm = THERM.r25 * Math.exp(THERM.beta * (1 / (actualC + 273.15) - 1 / 298.15));
+  const ratio = mv / THERM.vccMv;
+  settings.thermRFixed = Math.round(rTherm / (1 / ratio - 1));
+  for (const r of history) if (r.thermMv != null) r.tempC = thermToC(r.thermMv);
+  await store.set("settings", settings);
+  await evaluate();
+  return { actualC, mv, rFixed: settings.thermRFixed, nowC: pod.avgTempC };
 }
 
 export async function updateSettings({ location, tempC, demo }) {

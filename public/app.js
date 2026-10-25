@@ -40,6 +40,17 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Days from now until the end of a yyyy-mm-dd date (a "use by" date means usable that whole day)
+function daysUntil(dateStr) {
+  return Math.max(0.05, (new Date(`${dateStr}T23:59:59`) - Date.now()) / 86400000);
+}
+const toDateInput = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const fmtWhen = (ms) => new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const fmtDay = (ms) => new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+
 function fmtLeft(d) {
   if (d <= 0) return "Expired: check it";
   if (d < 1) return `${Math.max(1, Math.round(d * 24))} hours left`;
@@ -196,6 +207,7 @@ function renderSettings() {
     : "Phone alerts are off on this server (no NTFY_TOPIC set).";
   if (document.activeElement !== $("tempInput")) $("tempInput").value = pod.tempSetting ?? "";
   $("gasSettings").classList.toggle("hidden", pod.latest?.gas == null && pod.gasBaseline == null);
+  $("calibBox").classList.toggle("hidden", pod.mode !== "pod" || pod.latest?.thermMv == null);
 }
 
 const openSettings = () => { renderSettings(); $("settingsSheet").showModal(); };
@@ -220,6 +232,17 @@ $("tempForm").addEventListener("submit", (e) => {
   if (v === "") return;
   saveSettings({ tempC: Number(v) }, `Temperature set to ${v}°C`);
   $("tempInput").blur();
+});
+$("calibForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = $("calibInput").value.trim();
+  if (v === "") return;
+  try {
+    await api("/api/settings/calibrate", { actualC: Number(v) });
+    toast(`Sensor calibrated to ${v}°C`);
+    $("calibInput").value = "";
+    await refresh();
+  } catch (err) { toast(err.message); }
 });
 $("tempClear").addEventListener("click", () => { $("tempInput").value = ""; saveSettings({ tempC: null }, "Using a typical temperature"); });
 
@@ -274,9 +297,16 @@ function openEdit(id) {
   editing = state.items.find((i) => i.id === id);
   if (!editing) return;
   $("editTitle").textContent = `${editing.emoji} ${editing.name}`;
+  const expires = Date.now() + editing.remainingDays * 86400000;
+  $("editInfo").textContent = `Added ${fmtWhen(editing.addedAt)} · expires about ${fmtDay(expires)}`;
   $("editDays").value = Math.round(editing.remainingDays * 2) / 2;
+  $("editDate").value = toDateInput(expires);
   $("editSheet").showModal();
 }
+// Picking the date printed on the pack sets the days left
+$("editDate").addEventListener("change", () => {
+  if ($("editDate").value) $("editDays").value = Math.round(daysUntil($("editDate").value) * 10) / 10;
+});
 $("editSheet").addEventListener("click", (e) => {
   const q = e.target.closest("[data-quick]")?.dataset.quick;
   if (!q) return;
@@ -782,7 +812,8 @@ function renderProduct() {
         ${p.image ? `<img src="${esc(p.image)}" alt="">` : `<span class="emoji-big">${p.emoji}</span>`}
         <div><b>${esc(p.name)}</b><span class="muted">${esc([p.brand, p.quantity].filter(Boolean).join(" · "))}</span></div>
       </div>
-      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="${p.life.fridge}"> days in the fridge</div>
+      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="${p.life.fridge}"> days</div>
+      <label class="date-row">Use-by date on pack <input id="bcDate" type="date"></label>
       <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
   } else if (p.storeLabel) {
     // Price sticker from the store's own scale: no product info exists, so ask what it is
@@ -798,6 +829,7 @@ function renderProduct() {
     $("bcResult").innerHTML = `
       <input id="bcName" type="text" placeholder="e.g. Oat milk" maxlength="60">
       <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" placeholder="auto"> days</div>
+      <label class="date-row">Use-by date on pack <input id="bcDate" type="date"></label>
       <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
     $("bcName").focus();
   }
@@ -832,6 +864,9 @@ $("camAsk").addEventListener("click", (e) => {
 });
 $("bcClose").addEventListener("click", () => $("barcodeSheet").close());
 $("barcodeSheet").addEventListener("close", stopCamera);
+$("bcResult").addEventListener("change", (e) => {
+  if (e.target.id === "bcDate" && e.target.value) $("bcDays").value = Math.round(daysUntil(e.target.value) * 10) / 10;
+});
 $("bcResult").addEventListener("click", async (e) => {
   const action = e.target.closest("[data-bc]")?.dataset.bc;
   try {

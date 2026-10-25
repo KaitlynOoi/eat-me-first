@@ -282,3 +282,7 @@ button.wide, .button.wide { display: block; width: 100%; }
 nav button { font-size: 15px; padding: 14px 0; }
 nav button span { font-size: 15px; }
 #settingsBtn { font-size: 15px; }
+.date-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; }
+.date-row input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+#calibInput { width: 120px; flex: none; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+#editInfo { margin: -4px 0 10px; }

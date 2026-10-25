@@ -137,6 +137,7 @@ float thermMillivolts() {
 }
 
 float smoothedTherm = NAN;   // exponential moving average across readings
+float smoothedMv = NAN;      // same, for the raw voltage sent to the app (it converts + calibrates)
 
 // Voltage -> degrees C with the beta equation, for either way the divider can be wired
 float thermToC(float mv, bool highSide) {
@@ -163,6 +164,7 @@ void detectSensor() {
 void readSensor(float& t, float& h) {
   if (USE_THERMISTOR) {
     float mv = thermMillivolts();
+    smoothedMv = isnan(smoothedMv) ? mv : smoothedMv + 0.3 * (mv - smoothedMv);
     float raw = thermToC(mv, THERM_ON_HIGH_SIDE);
     // Smooth: each new reading moves the value 30% of the way (real temperature changes slowly)
     if (!isnan(raw)) smoothedTherm = isnan(smoothedTherm) ? raw : smoothedTherm + 0.3 * (raw - smoothedTherm);
@@ -410,7 +412,9 @@ void connectWiFi() {
 bool sendReading() {
   String body = "{\"seq\":" + String(seq) +
     ",\"tempC\":" + (isnan(lastTemp) ? String("null") : String(lastTemp, 2)) +
-    ",\"humidity\":" + (isnan(lastHum) ? String("null") : String(lastHum, 1)) + "}";
+    ",\"humidity\":" + (isnan(lastHum) ? String("null") : String(lastHum, 1)) +
+    // Thermistor: also send the raw voltage so the app can apply its calibration (Settings)
+    (USE_THERMISTOR && !isnan(smoothedMv) ? ",\"thermMv\":" + String(smoothedMv, 1) : String("")) + "}";
 
   WiFiClientSecure client;
   client.setInsecure();   // hackathon shortcut: skip certificate checks (traffic is still encrypted)

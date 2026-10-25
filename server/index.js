@@ -65,7 +65,10 @@ app.post("/api/pod/reading", route(async (req) => {
   const humidity = val(req.body.humidity, 0, 100);
   const gas = val(req.body.gas, 0, 4095);
   // A reading with no values still counts: the pod is online even if a sensor isn't working
-  const reading = { tempC, humidity, gas, seq: req.body.seq != null ? `p${req.body.seq}` : `d${++directSeq}`, source: "pod" };
+  // Thermistor pods send their raw voltage; convert with the current calibration
+  const thermMv = val(req.body.thermMv, 1, 3300);
+  const temp = thermMv != null ? engine.thermToC(thermMv) : tempC;
+  const reading = { tempC: temp, humidity, gas, thermMv, seq: req.body.seq != null ? `p${req.body.seq}` : `d${++directSeq}`, source: "pod" };
   await store.set("pod/latest", reading);
   await engine.ingest(reading);
   return { ok: true, ...engine.podScreens() };
@@ -78,6 +81,7 @@ app.post("/api/settings", route(async (req) => {
   if (demo) sim.setScenario("fridge");
   return { ok: true };
 }));
+app.post("/api/settings/calibrate", route(async (req) => engine.calibrateTemp(req.body.actualC)));
 app.post("/api/sim", route(async (req) => { sim.setScenario(req.body.scenario); return { scenario: sim.getScenario() }; }));
 app.post("/api/calibrate", route(async () => ({ gasBaseline: await engine.calibrateGas() })));
 app.post("/api/test-alert", route(async () => { await engine.testAlert(); return { ok: true }; }));
