@@ -112,9 +112,10 @@ Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 1
 
 | Part | Part pin | → ESP32-S3 |
 |---|---|---|
-| **Temperature sensor**: DHT11 (temp + humidity) **or** DS18B20 (temp only), detected automatically | S | **GPIO 5** |
-| | + (middle) | **3V3** (either 3V3 pin) |
-| | − | **GND** |
+| **Thermistor temperature module** (kit "digital temperature", KY-028: pins AO G + DO) | AO | **GPIO 4** (analog) |
+| | G | **GND** |
+| | + | **3V3** (not 5V) |
+| | DO | *not connected* |
 | **RGB LED** module (4 pins) | R | **GPIO 7** |
 | | G | **GPIO 15** |
 | | B | **GPIO 16** |
@@ -132,9 +133,9 @@ Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 1
 | | 14 D7 | **GPIO 11** |
 | | 15 A (backlight +) | **220Ω → 5V** |
 | | 16 K (backlight −) | **GND** |
-| *Spare* | | GPIO 4, 6, 12, 13 |
+| *Spare* | | GPIO 5, 6, 12, 13 |
 
-If the RGB module's LED has no small resistors on its board, put a 220Ω resistor in each of the R, G and B wires. The DHT11 reads 0–50°C, so it works for a fridge or pantry but not a freezer.
+If the RGB module's LED has no small resistors on its board, put a 220Ω resistor in each of the R, G and B wires. The thermistor's conversion is calibrated in the sketch (`THERM_R_FIXED`) for the blue screw's current position, so don't turn the screw. To use a DHT11 or DS18B20 on GPIO 5 instead, set `USE_THERMISTOR 0`.
 
 **Arduino IDE board:** **ESP32S3 Dev Module**, with Partition Scheme **Huge APP**. The pins are chosen automatically for ESP32-S3 vs classic ESP32 (classic ESP32 pins are in the comments at the top of the sketch). For an LCD with an I2C backpack, set `#define LCD_PARALLEL 0`.
 

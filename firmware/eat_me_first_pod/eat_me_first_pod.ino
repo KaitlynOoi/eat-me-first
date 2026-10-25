@@ -26,9 +26,16 @@ const char* SERVER_URL    = "https://eat-me-first-xjwe.onrender.com/api/pod/read
 const char* POD_KEY       = "";
 // ==========================
 
-// Temperature sensor: detected automatically at start-up on TEMP_PIN.
-//   DS18B20 (kit "18B20" digital temperature module) if one answers, otherwise a DHT11/DHT22 module.
+// Which temperature sensor:
+//   1 = thermistor module (kit "digital temperature" KY-028: pins AO G + DO, black bead + blue screw).
+//       Reads the analog AO voltage on THERM_PIN and converts it to degrees C (no humidity).
+//   0 = auto-detect on TEMP_PIN: DS18B20 if one answers, otherwise a DHT11/DHT22 module.
+#define USE_THERMISTOR 1
 #define DHT_TYPE DHT11  // 37-in-1 sensor kit module (KY-015) is a DHT11; change to DHT22 if you have one
+// Thermistor module details (standard 10k NTC, B = 3950, with a 10k resistor on the board).
+// THERM_ON_HIGH_SIDE: 1 if the thermistor sits between + and AO (AO voltage RISES when warmer),
+// 0 if it sits between AO and G (AO voltage FALLS when warmer). The serial log prints both.
+#define THERM_ON_HIGH_SIDE 1
 
 // Which LCD you have:
 //   1 = bare 16-pin LCD (pins labelled VSS VDD V0 RS RW E D0-D7 A K), wired in 4-bit mode (6 pins).
@@ -39,6 +46,7 @@ const char* POD_KEY       = "";
 // Arduino.h must come first: it's what defines which chip we're building for.
 #include <Arduino.h>
 #include "esp_system.h"
+#include <algorithm>
 #if CONFIG_IDF_TARGET_ESP32S3
   #define BOARD_S3 1
 #else
@@ -66,6 +74,7 @@ const char* POD_KEY       = "";
 // ESP32-S3 DevKit: everything on the header side 3V3, RST, 4, 5, 6, 7, 15, 16, 17, 18, 8, 3, 46, 9 ... 13, 5V
 // (GPIO 3 and 46 are skipped: the chip reads them at power-up. Analog needs GPIO 1-10 = ADC1.)
 const int TEMP_PIN = 5;    // temperature sensor "S" (DS18B20 or DHT11 module); its "+" goes to 3V3
+const int THERM_PIN = 4;   // thermistor module "AO" (must be an ADC1 pin: GPIO 1-10); "+" to 3V3, not 5V
 const int SENSOR_POWER_PIN = -1; // set to a GPIO to power the sensor from a pin instead of 3V3
 const int RGB_R = 7, RGB_G = 15, RGB_B = 16;
 #if LCD_PARALLEL
@@ -89,6 +98,7 @@ const int RGB_R = 25, RGB_G = 26, RGB_B = 27;
 #endif
 const int LED_PIN  = 2;    // onboard blue LED
 const int SENSOR_POWER_PIN = -1;  // classic ESP32: sensor "+" goes to 3V3
+const int THERM_PIN = 35;  // thermistor module "AO" (ADC1, input-only pin)
 #endif
 
 // RGB LED module (pins R G B -): "-" to GND = common cathode. Set true if its common pin goes to 3V3.
@@ -105,8 +115,44 @@ DallasTemperature ds(&oneWire);
 DHT dht(TEMP_PIN, DHT_TYPE);
 bool useDs18b20 = false;   // decided by detectSensor()
 
+// ---------- Thermistor module (AO) ----------
+const float THERM_R_FIXED = 3310.0;   // resistor paired with the thermistor: the blue screw setting, calibrated to ~22 C room temp
+const float THERM_R25     = 10000.0;  // thermistor resistance at 25 C
+const float THERM_BETA    = 3950.0;
+const float THERM_VCC_MV  = 3300.0;   // module powered from 3V3
+
+// The ESP32 ADC is noisy (worse while WiFi transmits): take 9 batches of 8 samples and use the
+// median batch, so a burst of noise can't skew the reading
+float thermMillivolts() {
+  float batches[9];
+  for (int b = 0; b < 9; b++) {
+    long sum = 0;
+    // 2 ms between samples: the module's signal comes through a high-value resistor, so the ADC
+    // needs time to settle (sampling faster reads too low)
+    for (int i = 0; i < 8; i++) { sum += analogReadMilliVolts(THERM_PIN); delay(2); }
+    batches[b] = sum / 8.0;
+  }
+  std::sort(batches, batches + 9);
+  return batches[4];
+}
+
+float smoothedTherm = NAN;   // exponential moving average across readings
+
+// Voltage -> degrees C with the beta equation, for either way the divider can be wired
+float thermToC(float mv, bool highSide) {
+  float ratio = mv / THERM_VCC_MV;
+  if (ratio <= 0.01 || ratio >= 0.99) return NAN;   // open or shorted: not a real reading
+  float r = highSide ? THERM_R_FIXED * (1.0 / ratio - 1.0)   // thermistor between + and AO
+                     : THERM_R_FIXED * ratio / (1.0 - ratio); // thermistor between AO and G
+  return 1.0 / (1.0 / 298.15 + log(r / THERM_R25) / THERM_BETA) - 273.15;
+}
+
 // Which temperature sensor is on TEMP_PIN? A DS18B20 answers a 1-Wire search; otherwise assume a DHT.
 void detectSensor() {
+  if (USE_THERMISTOR) {
+    Serial.printf("[sensor] thermistor module on GPIO %d (AO)\n", THERM_PIN);
+    return;
+  }
   ds.begin();
   useDs18b20 = ds.getDeviceCount() > 0;
   if (!useDs18b20) dht.begin();
@@ -115,6 +161,16 @@ void detectSensor() {
 
 // Temperature (and humidity for DHT; NAN for DS18B20)
 void readSensor(float& t, float& h) {
+  if (USE_THERMISTOR) {
+    float mv = thermMillivolts();
+    float raw = thermToC(mv, THERM_ON_HIGH_SIDE);
+    // Smooth: each new reading moves the value 30% of the way (real temperature changes slowly)
+    if (!isnan(raw)) smoothedTherm = isnan(smoothedTherm) ? raw : smoothedTherm + 0.3 * (raw - smoothedTherm);
+    t = smoothedTherm;
+    h = NAN;
+    Serial.printf("  [therm] AO %.0f mV -> raw %.1f C, smoothed %.1f C\n", mv, raw, t);
+    return;
+  }
   if (useDs18b20) {
     ds.requestTemperatures();
     t = ds.getTempCByIndex(0);
@@ -423,7 +479,7 @@ void loop() {
     // Sensor swapped or re-plugged while running? Look for it again after ~30 s of failed reads
     static int failedReads = 0;
     failedReads = isnan(lastTemp) ? failedReads + 1 : 0;
-    if (failedReads >= 6) { failedReads = 0; detectSensor(); }
+    if (failedReads >= 6 && !USE_THERMISTOR) { failedReads = 0; detectSensor(); }
     seq++;
     Serial.printf("#%lu  temp %.1f C | hum %.0f %%\n", seq, lastTemp, lastHum);
 
