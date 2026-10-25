@@ -26,7 +26,8 @@ const char* SERVER_URL    = "https://eat-me-first-xjwe.onrender.com/api/pod/read
 const char* POD_KEY       = "";
 // ==========================
 
-#define USE_DS18B20 0   // 0 = DHT11/DHT22 module, 1 = DS18B20 fallback
+// Temperature sensor: detected automatically at start-up on TEMP_PIN.
+//   DS18B20 (kit "18B20" digital temperature module) if one answers, otherwise a DHT11/DHT22 module.
 #define DHT_TYPE DHT11  // 37-in-1 sensor kit module (KY-015) is a DHT11; change to DHT22 if you have one
 
 // Which LCD you have:
@@ -57,18 +58,15 @@ const char* POD_KEY       = "";
   #include <Wire.h>
   #include <LiquidCrystal_I2C.h>
 #endif
-#if USE_DS18B20
-  #include <OneWire.h>
-  #include <DallasTemperature.h>
-#else
-  #include <DHT.h>
-#endif
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <DHT.h>
 
 #if BOARD_S3
 // ESP32-S3 DevKit: everything on the header side 3V3, RST, 4, 5, 6, 7, 15, 16, 17, 18, 8, 3, 46, 9 ... 13, 5V
 // (GPIO 3 and 46 are skipped: the chip reads them at power-up. Analog needs GPIO 1-10 = ADC1.)
-const int TEMP_PIN = 6;    // DHT11 module "S"
-const int SENSOR_POWER_PIN = 5;  // DHT11 module "+" (the pin supplies its 3.3 V; it only needs ~2.5 mA)
+const int TEMP_PIN = 5;    // temperature sensor "S" (DS18B20 or DHT11 module); its "+" goes to 3V3
+const int SENSOR_POWER_PIN = -1; // set to a GPIO to power the sensor from a pin instead of 3V3
 const int RGB_R = 7, RGB_G = 15, RGB_B = 16;
 #if LCD_PARALLEL
 const int LCD_RS = 17, LCD_E = 18, LCD_D4 = 8, LCD_D5 = 9, LCD_D6 = 10, LCD_D7 = 11;
@@ -102,12 +100,31 @@ const unsigned long SEND_INTERVAL_MS   = 5000;     // one reading every 5 s
 const unsigned long SCREEN_INTERVAL_MS = 3000;     // next LCD screen every 3 s
 const int MAX_SCREENS = 8;
 
-#if USE_DS18B20
 OneWire oneWire(TEMP_PIN);
 DallasTemperature ds(&oneWire);
-#else
 DHT dht(TEMP_PIN, DHT_TYPE);
-#endif
+bool useDs18b20 = false;   // decided by detectSensor()
+
+// Which temperature sensor is on TEMP_PIN? A DS18B20 answers a 1-Wire search; otherwise assume a DHT.
+void detectSensor() {
+  ds.begin();
+  useDs18b20 = ds.getDeviceCount() > 0;
+  if (!useDs18b20) dht.begin();
+  Serial.printf("[sensor] %s on GPIO %d\n", useDs18b20 ? "DS18B20 found" : "no DS18B20, using DHT", TEMP_PIN);
+}
+
+// Temperature (and humidity for DHT; NAN for DS18B20)
+void readSensor(float& t, float& h) {
+  if (useDs18b20) {
+    ds.requestTemperatures();
+    t = ds.getTempCByIndex(0);
+    if (t == DEVICE_DISCONNECTED_C) t = NAN;
+    h = NAN;
+  } else {
+    t = dht.readTemperature();
+    h = dht.readHumidity();
+  }
+}
 
 #if LCD_PARALLEL
 LiquidCrystal lcdPar(LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
@@ -378,11 +395,7 @@ void setup() {
     digitalWrite(SENSOR_POWER_PIN, HIGH);
     delay(1500);
   }
-#if USE_DS18B20
-  ds.begin();
-#else
-  dht.begin();
-#endif
+  detectSensor();
   Serial.println("\n=== Eat Me First pod ===");
 #if USE_RGB
   pinMode(RGB_R, OUTPUT); pinMode(RGB_G, OUTPUT); pinMode(RGB_B, OUTPUT);
@@ -406,14 +419,11 @@ void loop() {
 
   if (millis() - lastSend >= SEND_INTERVAL_MS || lastSend == 0) {
     lastSend = millis();
-#if USE_DS18B20
-    ds.requestTemperatures();
-    lastTemp = ds.getTempCByIndex(0);
-    if (lastTemp == DEVICE_DISCONNECTED_C) lastTemp = NAN;
-#else
-    lastTemp = dht.readTemperature();
-    lastHum = dht.readHumidity();
-#endif
+    readSensor(lastTemp, lastHum);
+    // Sensor swapped or re-plugged while running? Look for it again after ~30 s of failed reads
+    static int failedReads = 0;
+    failedReads = isnan(lastTemp) ? failedReads + 1 : 0;
+    if (failedReads >= 6) { failedReads = 0; detectSensor(); }
     seq++;
     Serial.printf("#%lu  temp %.1f C | hum %.0f %%\n", seq, lastTemp, lastHum);
 

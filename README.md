@@ -112,8 +112,8 @@ Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 1
 
 | Part | Part pin | → ESP32-S3 |
 |---|---|---|
-| **DHT11** module (temp + humidity) | S | **GPIO 6** |
-| | + | **3V3** (either 3V3 pin), or **GPIO 5**: the firmware switches GPIO 5 on to power the sensor |
+| **Temperature sensor**: DHT11 (temp + humidity) **or** DS18B20 (temp only), detected automatically | S | **GPIO 5** |
+| | + (middle) | **3V3** (either 3V3 pin) |
 | | − | **GND** |
 | **RGB LED** module (4 pins) | R | **GPIO 7** |
 | | G | **GPIO 15** |
@@ -132,7 +132,7 @@ Everything goes on **one side** of the ESP32-S3 DevKit: `3V3, RST, 4, 5, 6, 7, 1
 | | 14 D7 | **GPIO 11** |
 | | 15 A (backlight +) | **220Ω → 5V** |
 | | 16 K (backlight −) | **GND** |
-| *Spare* | | GPIO 4, 5, 12, 13 |
+| *Spare* | | GPIO 4, 6, 12, 13 |
 
 If the RGB module's LED has no small resistors on its board, put a 220Ω resistor in each of the R, G and B wires. The DHT11 reads 0–50°C, so it works for a fridge or pantry but not a freezer.
 
