@@ -258,11 +258,7 @@ function renderWeekly() {
         <div><b>${w.tossed}</b><small>tossed</small></div>
         <div><b>${w.saveRate}%</b><small>saved</small></div>
       </div>
-      <div class="bar" title="${w.saveRate}% saved"><span style="width:${w.saveRate}%"></span></div>
-      <p>≈ <b>$${w.moneySaved}</b> of food saved${w.moneyWasted ? `, $${w.moneyWasted} wasted` : ""}.</p>
-      ${w.mostTossed && w.mostTossed.count > 1
-        ? `<p>You tossed <b>${esc(w.mostTossed.name)}</b> ${w.mostTossed.count}× this week.</p>`
-        : ""}`
+      <div class="bar" title="${w.saveRate}% saved"><span style="width:${w.saveRate}%"></span></div>`
     : `<p>No food eaten or tossed yet.</p>`}`;
 }
 
