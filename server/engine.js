@@ -7,6 +7,7 @@ import { notify } from "./ntfy.js";
 const num = (k, d) => (process.env[k] ? Number(process.env[k]) : d);
 export const CFG = {
   avgWindowMin: num("AVG_WINDOW_MIN", 15),
+  steadyMin: num("STEADY_MIN", 3),   // a place is trusted after this many minutes of steady readings
   warmAlertMin: num("WARM_ALERT_MIN", 60),
   warmThresholdC: 7,
   gasRisePct: num("GAS_RISE_PCT", 25),
@@ -54,7 +55,8 @@ export async function load() {
   settings = { ...settings, ...((await store.get("settings")) || {}) };
   const savedAlerts = await store.get("alerts");
   alerts = savedAlerts ? Object.values(savedAlerts).sort((a, b) => b.t - a.t) : [];
-  if (Object.keys(items).length === 0) {
+  // Fresh start: fill in demo items (set SEED_DEMO_ITEMS=0 to start with an empty fridge instead)
+  if (Object.keys(items).length === 0 && process.env.SEED_DEMO_ITEMS !== "0") {
     for (const s of SEED) await addItem({ name: s.name, used: s.used });
   }
 }
@@ -109,8 +111,17 @@ function classify(avgTemp, prev) {
 async function evaluate() {
   const now = Date.now();
   const window = history.filter((r) => now - r.t <= CFG.avgWindowMin * MIN && r.tempC != null);
-  pod.avgTempC = avg(window.map((r) => r.tempC));
-  pod.env = classify(pod.avgTempC, pod.env); // what the pod detects (used when location is "auto")
+  // Fast path: if every reading in the last few minutes clearly says the same place (e.g. the pod was
+  // just put in the fridge), trust it now instead of waiting for the 15-minute average to catch up.
+  // A door opening is a short spike, so it never produces minutes of steady "wrong place" readings.
+  const recent = history.filter((r) => now - r.t <= CFG.steadyMin * MIN && r.tempC != null);
+  const places = new Set(recent.map((r) => detectNow(r.tempC)));
+  const steadyPlace = recent.length >= 6 && places.size === 1 && !places.has(null)
+    && now - recent[0].t >= (CFG.steadyMin - 0.5) * MIN ? [...places][0] : null;
+  pod.avgTempC = steadyPlace && steadyPlace !== detectNow(avg(window.map((r) => r.tempC)))
+    ? avg(recent.map((r) => r.tempC))      // just moved: the old 15 minutes no longer apply
+    : avg(window.map((r) => r.tempC));
+  pod.env = steadyPlace || classify(pod.avgTempC, pod.env); // what the pod detects (used when location is "auto")
 
   await checkWarmFridge(now);
   await checkGas(now);

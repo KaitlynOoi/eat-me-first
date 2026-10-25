@@ -161,16 +161,37 @@ void detectSensor() {
 }
 
 // Temperature (and humidity for DHT; NAN for DS18B20)
+// Sample the thermistor every second (called from loop). The median-of-batches read already removes
+// noise spikes, so only light smoothing is needed: it follows a real change within ~5-10 s.
+const float THERM_SMOOTHING = 0.4;   // share of each new sample taken (higher = faster, lower = steadier)
+float lastThermRawC = NAN, lastThermMv = NAN;
+
+// Last 7 one-second samples: their median ignores the odd dip when the WiFi radio transmits
+float recentMv[7];
+int recentCount = 0, recentPos = 0;
+
+void sampleThermistor() {
+  float sample = thermMillivolts();
+  recentMv[recentPos] = sample;
+  recentPos = (recentPos + 1) % 7;
+  if (recentCount < 7) recentCount++;
+  float sorted[7];
+  for (int i = 0; i < recentCount; i++) sorted[i] = recentMv[i];
+  std::sort(sorted, sorted + recentCount);
+  float mv = sorted[recentCount / 2];
+  lastThermMv = sample;
+  smoothedMv = isnan(smoothedMv) ? mv : smoothedMv + THERM_SMOOTHING * (mv - smoothedMv);
+  lastThermRawC = thermToC(mv, THERM_ON_HIGH_SIDE);
+  float smoothedC = thermToC(smoothedMv, THERM_ON_HIGH_SIDE);
+  if (!isnan(smoothedC)) smoothedTherm = smoothedC;
+}
+
 void readSensor(float& t, float& h) {
   if (USE_THERMISTOR) {
-    float mv = thermMillivolts();
-    smoothedMv = isnan(smoothedMv) ? mv : smoothedMv + 0.3 * (mv - smoothedMv);
-    float raw = thermToC(mv, THERM_ON_HIGH_SIDE);
-    // Smooth: each new reading moves the value 30% of the way (real temperature changes slowly)
-    if (!isnan(raw)) smoothedTherm = isnan(smoothedTherm) ? raw : smoothedTherm + 0.3 * (raw - smoothedTherm);
+    if (isnan(smoothedMv)) sampleThermistor();   // first reading before the 1 s sampler has run
     t = smoothedTherm;
     h = NAN;
-    Serial.printf("  [therm] AO %.0f mV -> raw %.1f C, smoothed %.1f C\n", mv, raw, t);
+    Serial.printf("  [therm] AO %.0f mV -> raw %.1f C, smoothed %.1f C\n", lastThermMv, lastThermRawC, t);
     return;
   }
   if (useDs18b20) {
@@ -226,7 +247,9 @@ void rgb(int r, int g, int b) {
 }
 
 void updateRgb() {
-  bool blinkOff = appAlert && level == RED && (millis() / 400) % 2;
+  // Steady colours only: switching the LED on and off makes the 3.3 V rail ripple,
+  // which the thermistor reading picks up as temperature noise
+  bool blinkOff = false;
   switch (level) {
     case GREEN:   rgb(0, 160, 0); break;
     case YELLOW:  rgb(255, 110, 0); break;
@@ -474,7 +497,8 @@ void setup() {
 }
 
 void loop() {
-  static unsigned long lastSend = 0, lastScreen = 0;
+  static unsigned long lastSend = 0, lastScreen = 0, lastSample = 0;
+  if (USE_THERMISTOR && millis() - lastSample >= 1000) { lastSample = millis(); sampleThermistor(); }
   updateRgb();
 
   if (millis() - lastSend >= SEND_INTERVAL_MS || lastSend == 0) {
