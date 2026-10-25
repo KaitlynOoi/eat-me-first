@@ -276,3 +276,9 @@ button.wide, .button.wide { display: block; width: 100%; }
 .led.red { background: #ff3b30; color: #ff3b30; }
 .led.blink { animation: ledblink .8s steps(2) infinite; }
 @keyframes ledblink { 50% { opacity: .15; } }
+
+/* ---------- v10: plain, emoji-free UI ---------- */
+.scan-btn { padding: 18px 8px; font-size: 16px; font-weight: 600; }
+nav button { font-size: 15px; padding: 14px 0; }
+nav button span { font-size: 15px; }
+#settingsBtn { font-size: 15px; }

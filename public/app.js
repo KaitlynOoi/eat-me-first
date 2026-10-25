@@ -51,7 +51,7 @@ function urgencyLabel(d) {
   return "Expires tomorrow";
 }
 
-const ENV_LABEL = { fridge: "🧊 In the fridge", freezer: "❄️ In the freezer", pantry: "🏠 On the counter / pantry" };
+const ENV_LABEL = { fridge: "Fridge", freezer: "Freezer", pantry: "Pantry" };
 const STATUS_LABEL = { eaten: "Ate it", tossed: "Tossed", removed: "Removed" };
 const fmt = (v, digits = 1) => (v == null ? "--" : Number(v).toFixed(digits));
 
@@ -80,7 +80,6 @@ function render() {
   renderSpeed(pod.conditions);
   renderLcd();
   renderSettings();
-  $("demoCard").classList.toggle("hidden", !(pod.demo && pod.mode !== "pod"));
   $("podTemp").textContent = fmt(pod.latest?.tempC);
   $("podAvg").textContent = fmt(pod.avgTempC);
   $("podHum").textContent = fmt(pod.latest?.humidity, 0);
@@ -91,15 +90,15 @@ function render() {
   const warm = pod.warmMinutes > 0 || pod.sensorProblem;
   $("podWarn").classList.toggle("hidden", !warm);
   if (pod.sensorProblem) $("podWarn").textContent = pod.tempSetting != null
-    ? `⚠️ Pod's temperature sensor isn't reading, so we're using your setting (${pod.tempSetting}°C).`
-    : "⚠️ Pod is connected, but its temperature sensor isn't reading. Set the temperature in ⚙️ Settings for now.";
-  else if (warm) $("podWarn").textContent = `⚠️ Fridge above 7°C for ${pod.warmMinutes} min (alert at ${config.warmAlertMin})`;
+    ? `Temperature sensor not reading. Using your setting (${pod.tempSetting}°C).`
+    : "Temperature sensor not reading. Set it in Settings.";
+  else if (warm) $("podWarn").textContent = `Fridge above 7°C for ${pod.warmMinutes} min`;
 
   // Items, grouped by urgency
   const groups = [
-    { title: "🔴 Eat today", items: items.filter((i) => i.remainingDays < 1), cls: "urgent" },
-    { title: "🟠 Eat soon", items: items.filter((i) => i.remainingDays >= 1 && i.remainingDays < 3), cls: "soon" },
-    { title: "🟢 Fresh", items: items.filter((i) => i.remainingDays >= 3), cls: "" },
+    { title: "Eat today", items: items.filter((i) => i.remainingDays < 1), cls: "urgent" },
+    { title: "Eat soon", items: items.filter((i) => i.remainingDays >= 1 && i.remainingDays < 3), cls: "soon" },
+    { title: "Fresh", items: items.filter((i) => i.remainingDays >= 3), cls: "" },
   ].filter((g) => g.items.length);
   $("emptyItems").classList.toggle("hidden", items.length > 0);
   $("itemGroups").innerHTML = groups.map((g) => `
@@ -109,7 +108,7 @@ function render() {
         ${icon(i)}
         <div class="info" data-edit="${i.id}"><div class="name">${esc(i.name)}</div><div class="left">${fmtLeft(i.remainingDays)}</div>${forecastNote(i)}</div>
         <div class="actions">
-          <button class="ate" data-done="${i.id}" data-status="eaten" data-name="${esc(i.name)}">✓ Ate it</button>
+          <button class="ate" data-done="${i.id}" data-status="eaten" data-name="${esc(i.name)}">Ate it</button>
           <button class="toss" data-done="${i.id}" data-status="tossed" data-name="${esc(i.name)}">Tossed</button>
         </div>
       </li>`).join("")}
@@ -123,12 +122,6 @@ function render() {
       <span class="tag">${STATUS_LABEL[r.status]}</span>
       <button class="secondary" data-restore="${r.id}" data-name="${esc(r.name)}">Restore</button></li>`).join("");
 
-  $("alertList").innerHTML = alerts.length
-    ? alerts.slice(0, 5).map((a) => `<li><b>${esc(a.title)}</b>${esc(a.message)}<br><time>${new Date(a.t).toLocaleTimeString()}</time></li>`).join("")
-    : `<li class="muted">No alerts yet.</li>`;
-
-  $("simButtons").innerHTML = Object.entries(sim.scenarios).map(([k, s]) =>
-    `<button data-sim="${k}" class="${sim.scenario === k ? "on" : ""}">${esc(s.label)}</button>`).join("");
   $("ntfyInfo").textContent = config.ntfyTopic
     ? `Phone alerts: install the ntfy app and subscribe to "${config.ntfyTopic}".`
     : "Phone alerts are off: set NTFY_TOPIC in .env.";
@@ -163,7 +156,6 @@ function renderLcd() {
   $("lcd").classList.toggle("alert", top.startsWith("!!"));
   const level = state.pod.lcd.level;
   $("ledDot").className = `led ${level}${state.pod.lcd.alert && level === "red" ? " blink" : ""}`;
-  $("ledText").textContent = { green: "LED green: all good", yellow: "LED yellow: eat something soon", red: "LED red: act now" }[level];
 }
 setInterval(() => { lcdIndex++; renderLcd(); }, 3000);
 
@@ -174,49 +166,35 @@ function forecastNote(i) {
   if (!f || f.speed < 1.15) return "";
   const lost = f.normalDays - f.remainingDays;
   const howMuch = lost >= 1 ? `${lost.toFixed(lost < 3 ? 1 : 0)} days sooner` : `${Math.max(1, Math.round(lost * 24))}h sooner`;
-  return `<span class="fc">⚡ ${howMuch} · ${esc(f.reasons.join(", "))}</span>`;
+  return `<span class="fc">${howMuch} · ${esc(f.reasons.join(", "))}</span>`;
 }
 
 function renderSpeed(c) {
   const lines = [];
-  if (c.temp >= 1.15) lines.push(`⚡ Food is spoiling ${c.temp.toFixed(1)}× faster than normal because it's warm`);
-  else if (c.temp <= 0.85) lines.push("❄️ Colder than usual: food lasts a bit longer");
-  if (c.gas >= 1.15) lines.push(`🍌 Ripening gas is up ${c.gasAbovePct}%: fruit & veg aging ${c.gas.toFixed(1)}× faster`);
-  $("podSpeed").innerHTML = lines.length ? lines.map(esc).join("<br>") : "✅ Normal conditions: food is aging at its usual pace";
+  if (c.temp >= 1.15) lines.push(`Too warm: food spoiling ${c.temp.toFixed(1)}× faster`);
+  if (c.gas >= 1.15) lines.push(`Ripening gas up ${c.gasAbovePct}%`);
+  $("podSpeed").innerHTML = lines.map(esc).join("<br>");
   $("podSpeed").classList.toggle("fast", lines.some((l) => !l.startsWith("❄️")));
 }
 
 // ---------- Settings ----------
-const PLACE = { fridge: "🧊 Fridge", freezer: "❄️ Freezer", pantry: "🏠 Pantry / counter" };
+const PLACE = { fridge: "Fridge", freezer: "Freezer", pantry: "Pantry" };
 
 function renderSettings() {
   const { pod, config } = state;
   const detected = pod.detectedEnv
     ? `${PLACE[pod.detectedEnv]}${pod.avgTempC != null ? ` (${pod.avgTempC.toFixed(1)}°C)` : ""}`
     : pod.mode === "manual" ? (pod.tempSetting != null ? `${PLACE[pod.env]} from your ${pod.tempSetting}°C` : "needs a pod, using Fridge") : "not sure yet";
-  const opts = [["auto", "🤖 Auto (recommended)", `Detected: ${detected}`], ...Object.entries(PLACE).map(([k, v]) => [k, v, ""])];
+  const opts = [["auto", "Auto", pod.detectedEnv ? `Detected: ${detected}` : ""], ...Object.entries(PLACE).map(([k, v]) => [k, v, ""])];
   $("locationChoices").innerHTML = opts.map(([k, label, sub]) =>
     `<button data-location="${k}" class="${pod.location === k ? "on" : ""}"><span>${label}</span><small>${esc(sub)}</small></button>`).join("");
   $("locationNote").innerHTML = pod.mismatch
-    ? `<span class="mismatch">⚠️ You set ${PLACE[pod.location]}, but the temperature looks like ${PLACE[pod.mismatch]}. Was the pod moved?</span>`
-    : pod.location !== "auto"
-      ? "Using your setting. Switch back to Auto any time."
-      : pod.mode === "manual"
-        ? "With a pod, this is detected from temperature. Without one, we use your temperature below (or assume a fridge)."
-        : "The pod works this out from temperature (15-minute average), so opening the door won't confuse it.";
+    ? `<span class="mismatch">Temperature looks like ${PLACE[pod.mismatch]}. Was the pod moved?</span>`
+    : "";
   $("ntfyInfo").textContent = config.ntfyTopic
     ? `Install the ntfy app and subscribe to "${config.ntfyTopic}".`
     : "Phone alerts are off on this server (no NTFY_TOPIC set).";
-  $("tempNote").textContent = pod.mode === "pod" && pod.sensorProblem
-    ? "Your pod's temperature sensor isn't reading, so the temperature you enter here is used instead."
-    : pod.mode === "pod"
-    ? `Your pod measures this automatically (now ${pod.avgTempC?.toFixed(1)}°C). A saved temperature is only used if the pod goes offline.`
-    : "If you know your fridge/freezer/pantry temperature, enter it. Food ages faster when it's warmer. Leave empty for a typical temperature.";
   if (document.activeElement !== $("tempInput")) $("tempInput").value = pod.tempSetting ?? "";
-  $("podSourceNote").textContent = pod.mode === "pod"
-    ? "A real pod is connected, so the demo pod stays off."
-    : "Turn on to simulate a pod (realistic readings + demo buttons) when you don't have the hardware with you.";
-  $("demoToggle").checked = pod.demo;
   $("gasSettings").classList.toggle("hidden", pod.latest?.gas == null && pod.gasBaseline == null);
 }
 
@@ -236,8 +214,6 @@ $("locationChoices").addEventListener("click", async (e) => {
 async function saveSettings(body, message) {
   try { await api("/api/settings", body); toast(message); await refresh(); } catch (err) { toast(err.message); }
 }
-$("demoToggle").addEventListener("change", (e) =>
-  saveSettings({ demo: e.target.checked }, e.target.checked ? "Demo pod on" : "Demo pod off"));
 $("tempForm").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("tempInput").value.trim();
@@ -252,19 +228,19 @@ function renderWeekly() {
   const w = state.weekly;
   const total = w.eaten + w.tossed;
   $("weekly").innerHTML = `
-    <h2>📊 This week</h2>
+    <h2>This week</h2>
     ${total ? `
       <div class="nums">
-        <div><b>${w.eaten}</b><small>🎉 eaten</small></div>
-        <div><b>${w.tossed}</b><small>🗑️ tossed</small></div>
+        <div><b>${w.eaten}</b><small>eaten</small></div>
+        <div><b>${w.tossed}</b><small>tossed</small></div>
         <div><b>${w.saveRate}%</b><small>saved</small></div>
       </div>
       <div class="bar" title="${w.saveRate}% saved"><span style="width:${w.saveRate}%"></span></div>
       <p>≈ <b>$${w.moneySaved}</b> of food saved${w.moneyWasted ? `, $${w.moneyWasted} wasted` : ""}.</p>
       ${w.mostTossed && w.mostTossed.count > 1
-        ? `<p>💡 You tossed <b>${esc(w.mostTossed.name)}</b> ${w.mostTossed.count}× this week. Try buying less of it.</p>`
-        : w.tossed === 0 ? `<p>🌱 Nothing wasted so far this week!</p>` : ""}`
-    : `<p class="muted">Tap <b>✓ Ate it</b> or <b>Tossed</b> when food leaves the fridge to see your weekly score.</p>`}`;
+        ? `<p>You tossed <b>${esc(w.mostTossed.name)}</b> ${w.mostTossed.count}× this week.</p>`
+        : ""}`
+    : `<p>No food eaten or tossed yet.</p>`}`;
 }
 
 // ---------- Shopping list ----------
@@ -337,7 +313,7 @@ function urgentHtml() {
         <div>${head}<a href="${esc(u.recipe.url)}" target="_blank" rel="noopener">${esc(u.recipe.title)} ↗</a>
         <div class="muted">Also uses: ${u.recipe.uses.filter((n) => n !== u.item).map(esc).join(", ") || "nothing else"}</div></div></li>`;
     }
-    return `<li><span class="tipicon">💡</span><div>${head}<div class="tip">${esc(u.tip)}</div></div></li>`;
+    return `<li><div>${head}<div class="tip">${esc(u.tip)}</div></div></li>`;
   }).join("");
 }
 
@@ -360,8 +336,8 @@ function recipeCard(r) {
           : `<span class="chip need">Uses nothing from your fridge</span>`}</div>
         <div class="need-line">${r.missingCount
           ? `Also need: ${r.missing.slice(0, 3).map(esc).join(", ")}${r.missingCount > 3 ? ` +${r.missingCount - 3} more` : ""}`
-          : "✅ You have everything"}</div>
-        ${r.missingCount ? `<button class="addlist" data-shoprecipe="${esc(r.id)}">🛒 Add ${r.missingCount} to list</button>` : ""}
+          : "You have everything"}</div>
+        ${r.missingCount ? `<button class="addlist" data-shoprecipe="${esc(r.id)}">Add ${r.missingCount} to list</button>` : ""}
       </div>
     </li>`;
 }
@@ -369,7 +345,7 @@ function recipeCard(r) {
 function renderRecipes() {
   $("recipeList").innerHTML = recipes.fridge.length
     ? recipes.fridge.map(recipeCard).join("")
-    : `<li class="muted">No recipes match yet. Add more food to your fridge, or search above.</li>`;
+    : `<li class="muted">No recipes yet.</li>`;
 }
 
 // ---------- Recipe search (ranked by what's in your fridge) ----------
@@ -383,7 +359,7 @@ async function searchRecipes(q) {
     ({ results: searchResults } = await api(`/api/recipes/search?q=${encodeURIComponent(q)}`));
     $("searchList").innerHTML = searchResults.length
       ? searchResults.map(recipeCard).join("")
-      : `<li class="muted">No recipes found for “${esc(q)}”. Try one word, like “pasta” or “chicken”.</li>`;
+      : `<li class="muted">No recipes found.</li>`;
   } catch (err) {
     $("searchList").innerHTML = `<li class="muted">Search failed: ${esc(err.message)}</li>`;
   }
@@ -469,7 +445,7 @@ document.addEventListener("click", async (e) => {
     else if (btn.dataset.done) {
       const { done: id, status, name } = btn.dataset;
       await api(`/api/items/${id}/status`, { status });
-      toast(status === "eaten" ? `Ate ${name}: food saved! 🎉` : `Tossed ${name}`, restore(id, name));
+      toast(status === "eaten" ? `Ate ${name}` : `Tossed ${name}`, restore(id, name));
       refresh();
     } else if (btn.dataset.restore) {
       await restore(btn.dataset.restore, btn.dataset.name)();
@@ -520,9 +496,6 @@ $("customName").addEventListener("input", () => {
       estFor = name;
       $("estEmoji").textContent = est.emoji;
       $("customDays").value = Math.round(est.life.fridge * 2) / 2;
-      $("estHint").textContent = est.matched
-        ? `Estimated from “${est.matched}”. Change it if the pack says otherwise.`
-        : "We don't know this one, so we guessed. Change it if you know better.";
       $("customEstimate").classList.remove("hidden");
     } catch {}
   }, 250);
@@ -627,11 +600,8 @@ function rememberedCameraOk() {
 function showCamAsk() {
   bcStatus("");
   $("camAsk").innerHTML = `
-    <div class="cam-icon">📷</div>
     <b class="cam-title">Allow camera to scan barcodes</b>
-    <p class="muted">The camera is only used while this screen is open, to read barcodes. Nothing is recorded or uploaded.</p>
-    <button class="wide" data-cam="allow">Allow camera</button>
-    <p class="muted small">Your phone will ask next. Tap <b>Allow</b>.</p>`;
+    <button class="wide" data-cam="allow">Allow camera</button>`;
   $("camAsk").classList.remove("hidden");
 }
 
@@ -646,11 +616,9 @@ function showCamBlocked() {
         ? ["Tap the <b>⚙ / 🔒</b> icon next to the web address", "Tap <b>Permissions → Camera</b>", "Choose <b>Allow</b>", "Tap <b>Try again</b>"]
         : ["Click the <b>🔒</b> icon next to the web address", "Set <b>Camera</b> to <b>Allow</b>", "Click <b>Try again</b>"];
   $("camAsk").innerHTML = `
-    <div class="cam-icon">🚫</div>
     <b class="cam-title">Camera is blocked for this site</b>
     <ol>${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
-    <button class="wide" data-cam="allow">Try again</button>
-    <p class="muted small">Or skip the camera: use a photo of the barcode or type its number below.</p>`;
+    <button class="wide" data-cam="allow">Try again</button>`;
   $("camAsk").classList.remove("hidden");
   $("bcAlt").open = true;
 }
@@ -815,7 +783,6 @@ function renderProduct() {
         <div><b>${esc(p.name)}</b><span class="muted">${esc([p.brand, p.quantity].filter(Boolean).join(" · "))}</span></div>
       </div>
       <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" value="${p.life.fridge}"> days in the fridge</div>
-      <p class="muted">${p.guessed ? "We couldn't tell what kind of food this is, so check the date on the pack." : "Estimated from the product type. Change it if the pack says otherwise."}</p>
       <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
   } else if (p.storeLabel) {
     // Price sticker from the store's own scale: no product info exists, so ask what it is
@@ -830,7 +797,7 @@ function renderProduct() {
     bcStatus(`Barcode ${p.code} isn't in the free product database yet. What is it?`);
     $("bcResult").innerHTML = `
       <input id="bcName" type="text" placeholder="e.g. Oat milk" maxlength="60">
-      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" placeholder="auto"> days <span class="muted small">(leave empty and we'll estimate)</span></div>
+      <div class="days-row">Lasts about <input id="bcDays" type="number" min="0.5" step="0.5" placeholder="auto"> days</div>
       <div class="row"><button data-bc="add">Add to fridge</button><button class="secondary" data-bc="again">Scan another</button></div>`;
     $("bcName").focus();
   }

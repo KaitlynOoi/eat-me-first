@@ -115,15 +115,15 @@ async function recognize(img) {
 function renderGuesses(guesses) {
   const sure = guesses[0]?.probability >= 0.3;
   produceStatus(guesses.length
-    ? (sure ? "Is this right? Tap to choose." : "Not sure about this one. Is it any of these?")
-    : "Couldn't recognize this. Pick what it is below, or type it.");
+    ? (sure ? "Tap the right one." : "Not sure. Is it one of these?")
+    : "Couldn't recognize it. Pick it below.");
   // Fallback choices: everyday produce, incl. things the model can't recognize (tomatoes, carrots…)
   const produce = state.quickAdd.find((s) => s.section === "Produce")?.foods || [];
   $("produceResult").innerHTML = `
     ${guesses.length ? `<div class="guesses">${guesses.map((g) =>
       `<button data-pick="${esc(g.name)}">${esc(g.name)} <span class="muted small">${Math.round(g.probability * 100)}%</span></button>`).join("")}</div>` : ""}
     <div id="produceConfirm" class="estimate confirm-box hidden"></div>
-    <p class="muted small">Not right? Pick it:</p>
+    <p class="small">Or pick:</p>
     <div class="picks">${produce.map((f) => `<button data-pick="${esc(f.name)}">${f.emoji} ${esc(f.name)}</button>`).join("")}</div>
     <input id="produceName" type="text" placeholder="…or type it, e.g. kiwi" maxlength="60">`;
 }
@@ -149,7 +149,7 @@ async function handlePhoto(file) {
   const url = URL.createObjectURL(file);
   $("producePreview").src = url;
   $("producePreview").classList.remove("hidden");
-  produceStatus(classifier ? "Looking…" : "Loading the food recognizer (first time only, ~15 MB)…");
+  produceStatus(classifier ? "Looking…" : "Loading…");
   try {
     // Plain onload (img.decode() can stall while the page is in the background)
     const img = await new Promise((resolve, reject) => {

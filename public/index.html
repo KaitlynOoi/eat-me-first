@@ -13,10 +13,10 @@
 </head>
 <body>
   <header>
-    <h1>🥕 Eat Me First</h1>
+    <h1>Eat Me First</h1>
     <div class="head-right">
       <span id="podStatus" class="pill">connecting…</span>
-      <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
+      <button id="settingsBtn" class="link" aria-label="Settings">Settings</button>
     </div>
   </header>
 
@@ -28,17 +28,17 @@
       <!-- Urgent: what to cook today -->
       <div id="cookToday" class="card urgent-card hidden">
         <div class="card-head">
-          <h2>🔥 Cook these today</h2>
-          <button class="link" data-tab-jump="recipes">All recipes →</button>
+          <h2>Cook these today</h2>
+          <button class="link" data-tab-jump="recipes">All recipes</button>
         </div>
         <ul id="urgentList" class="urgent-list"></ul>
       </div>
 
       <div id="itemGroups"></div>
-      <p id="emptyItems" class="muted hidden">Your fridge is empty. Add food on the Add tab.</p>
+      <p id="emptyItems" class="hidden">No food yet.</p>
 
       <details class="card" id="removedBox">
-        <summary>↩️ Recently removed <span class="muted">(tap Restore if it was a mistake)</span></summary>
+        <summary>Recently removed</summary>
         <ul id="removedList" class="removed"></ul>
       </details>
 
@@ -57,43 +57,26 @@
         <div id="podWarn" class="warn hidden"></div>
         <div id="podSpeed" class="speed"></div>
         <div class="lcd-wrap">
-          <small>📟 Pod screen <span id="ledDot" class="led"></span> <span id="ledText"></span></small>
+          <small>Pod screen <span id="ledDot" class="led"></span></small>
           <pre id="lcd" class="lcd" aria-label="What the pod's screen shows"></pre>
         </div>
       </div>
 
-      <h2>Alerts</h2>
-      <ul id="alertList" class="alerts"></ul>
-
-      <div id="demoCard" class="card demo hidden">
-        <div class="card-head">
-          <h2>🎬 Demo controls</h2>
-          <button class="link" data-open-settings>Hide</button>
-        </div>
-        <p class="muted small">Make the demo pod act out a situation. Ignored once a real pod is connected.</p>
-        <div id="simButtons" class="chips"></div>
-      </div>
     </section>
 
     <!-- ADD TAB -->
     <section id="tab-add" class="tab">
       <div class="card">
-        <h2>📷 Scan food</h2>
+        <h2>Scan</h2>
         <div class="scan-choices">
-          <button id="barcodeBtn" class="scan-btn">
-            <span class="scan-icon">📦</span><b>Barcode</b><small>Packaged food: milk, yogurt, bread…</small>
-          </button>
-          <button id="produceBtn" class="scan-btn">
-            <span class="scan-icon">🍎</span><b>Fresh food</b><small>Snap a fruit or veg: banana, orange…</small>
-          </button>
+          <button id="barcodeBtn" class="scan-btn">Scan barcode</button>
+          <button id="produceBtn" class="scan-btn">Scan fresh food</button>
         </div>
         <input id="produceInput" type="file" accept="image/*" capture="environment" hidden>
-        <p class="muted small">Both are free and work on your phone. Meat from the butcher or deli? Use Quick add below.</p>
       </div>
 
       <div class="card hidden" id="photoCard">
-        <h2>📷 Scan groceries</h2>
-        <p class="muted" id="scanHint">Take a photo and we'll list the food in it.</p>
+        <h2>Scan groceries</h2>
         <label class="button" id="photoLabel">
           Take / choose photo
           <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
@@ -102,7 +85,7 @@
       </div>
 
       <form id="customAdd" class="card custom-add" autocomplete="off">
-        <h2>✍️ Type any food</h2>
+        <h2>Add food</h2>
         <input id="customName" placeholder="e.g. chicken thighs, leftover lasagna" maxlength="60" aria-label="Food name">
         <div id="customEstimate" class="estimate hidden">
           <div class="days-row">
@@ -111,13 +94,11 @@
             <input id="customDays" type="number" min="0.5" step="0.5" aria-label="Days it lasts in the fridge">
             <span>days</span>
           </div>
-          <p class="muted small" id="estHint"></p>
           <button type="submit" class="wide">Add to fridge</button>
         </div>
       </form>
 
       <h2>Quick add</h2>
-      <p class="muted">Tap to add. No barcode at the butcher, deli or produce aisle? Pick it here. Wrong one? Hit Undo.</p>
       <div id="quickAdd"></div>
     </section>
 
@@ -127,7 +108,7 @@
         <input id="shopName" placeholder="Add to shopping list…" maxlength="60" required>
         <button type="submit">Add</button>
       </form>
-      <p class="muted" id="shopEmpty">Your list is empty. On the Recipes tab, tap “Add to list” to save what a recipe needs.</p>
+      <p id="shopEmpty">Your list is empty.</p>
       <ul id="shopList" class="shop"></ul>
       <button id="shopClear" class="secondary hidden">Clear checked items</button>
     </section>
@@ -139,33 +120,31 @@
         <button type="submit">Search</button>
       </form>
       <div id="recipesUrgentBox" class="hidden urgent-box">
-        <h2>🔥 Use it today</h2>
+        <h2>Use it today</h2>
         <ul id="recipesUrgent" class="urgent-list"></ul>
       </div>
       <div id="searchBox" class="hidden">
         <div class="card-head">
           <h2 id="searchTitle">Results</h2>
-          <button class="link" id="searchClear" type="button">✕ Clear</button>
+          <button class="link" id="searchClear" type="button">Clear</button>
         </div>
-        <p class="muted">Recipes that use food in your fridge come first.</p>
         <ul id="searchList" class="recipes"></ul>
       </div>
       <div id="fridgeRecipes">
         <div class="card-head">
-          <h2>🧊 Made from your fridge</h2>
+          <h2>From your fridge</h2>
           <button class="link" id="recipesRefresh">Refresh</button>
         </div>
-        <p class="muted">Picked from what's in your fridge, using the food that expires soonest first.</p>
         <ul id="recipeList" class="recipes"><li class="muted">Loading recipes…</li></ul>
       </div>
     </section>
   </main>
 
   <nav>
-    <button data-tab="fridge" class="active">🧊<span>Fridge</span></button>
-    <button data-tab="add">➕<span>Add</span></button>
-    <button data-tab="recipes">🍳<span>Recipes</span></button>
-    <button data-tab="list">🛒<span>List <b id="shopBadge" class="badge hidden"></b></span></button>
+    <button data-tab="fridge" class="active"><span>Fridge</span></button>
+    <button data-tab="add"><span>Add</span></button>
+    <button data-tab="recipes"><span>Recipes</span></button>
+    <button data-tab="list"><span>List <b id="shopBadge" class="badge hidden"></b></span></button>
   </nav>
 
   <!-- Edit an item -->
@@ -194,24 +173,24 @@
   <!-- Barcode scanner -->
   <dialog id="barcodeSheet" class="sheet tall">
     <div class="card-head">
-      <h2>📦 Scan a barcode</h2>
+      <h2>Scan barcode</h2>
       <button class="link" id="bcClose">Done</button>
     </div>
     <div id="camAsk" class="cam-ask hidden"></div>
     <div id="reader" class="hidden">
       <video id="bcVideo" playsinline muted autoplay></video>
       <div class="aim"><span></span></div>
-      <button id="torchBtn" class="torch hidden" type="button" aria-label="Flashlight">🔦</button>
+      <button id="torchBtn" class="torch hidden" type="button" aria-label="Flashlight">Light</button>
     </div>
     <p id="bcStatus" class="muted center">Starting camera…</p>
     <div id="bcResult"></div>
     <details id="bcAlt" class="bc-alt">
       <summary>Camera not working?</summary>
-      <label class="button secondary wide">🖼️ Use a photo of the barcode
+      <label class="button secondary wide">Use a photo of the barcode
         <input id="bcPhoto" type="file" accept="image/*" hidden>
       </label>
       <form id="bcManual" class="row">
-        <input id="bcCode" inputmode="numeric" pattern="[0-9 ]*" placeholder="…or type the barcode number" aria-label="Barcode number">
+        <input id="bcCode" inputmode="numeric" pattern="[0-9 ]*" placeholder="Or type the barcode number" aria-label="Barcode number">
         <button type="submit">Look up</button>
       </form>
     </details>
@@ -220,7 +199,7 @@
   <!-- Fresh produce recognition -->
   <dialog id="produceSheet" class="sheet tall">
     <div class="card-head">
-      <h2>🍎 What is it?</h2>
+      <h2>What is it?</h2>
       <button class="link" id="produceClose">Done</button>
     </div>
     <img id="producePreview" class="produce-preview hidden" alt="Your photo">
@@ -231,7 +210,7 @@
   <!-- Settings -->
   <dialog id="settingsSheet" class="sheet tall">
     <div class="card-head">
-      <h2>⚙️ Settings</h2>
+      <h2>Settings</h2>
       <button class="link" id="settingsClose">Done</button>
     </div>
 
@@ -239,8 +218,7 @@
     <div id="locationChoices" class="choices"></div>
     <p id="locationNote" class="muted small"></p>
 
-    <h3 class="set-h">Temperature <span class="muted small">(optional)</span></h3>
-    <p class="muted small" id="tempNote"></p>
+    <h3 class="set-h">Temperature</h3>
     <form id="tempForm" class="row" autocomplete="off">
       <input id="tempInput" type="number" step="0.5" min="-30" max="40" placeholder="e.g. 3" aria-label="Temperature in °C">
       <span>°C</span>
@@ -250,17 +228,13 @@
 
     <div id="gasSettings" class="hidden">
       <h3 class="set-h">Gas sensor</h3>
-      <p class="muted small">The pod learns what "normal" smells like by itself. If you just cleaned the fridge or moved the pod, reset it.</p>
       <button id="calibrateBtn" class="secondary wide">Reset normal gas level</button>
     </div>
 
     <h3 class="set-h">Phone alerts</h3>
-    <p class="muted small" id="ntfyInfo"></p>
+    <p id="ntfyInfo" class="small"></p>
     <button id="testAlertBtn" class="secondary wide">Send a test alert</button>
 
-    <h3 class="set-h">Demo</h3>
-    <p class="muted small" id="podSourceNote"></p>
-    <label class="toggle"><input type="checkbox" id="demoToggle"> Demo mode (simulated pod for presentations)</label>
   </dialog>
 
   <div id="toast" class="toast hidden"><span id="toastMsg"></span><button id="toastUndo" class="hidden">Undo</button></div>
