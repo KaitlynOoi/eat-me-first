@@ -438,15 +438,10 @@ void loop() {
   }
 
   // Cycle the LCD screens; flash the backlight on alerts
-  // Keep a bare LCD clean: rewrite the same text every 5 s (invisible, fixes scrambled characters)
-  // and fully re-initialise it every 30 s (recovers it if power noise knocked it out of sync)
-  static unsigned long lastRefresh = 0, lastRewrite = 0;
-  if (millis() - lastRefresh >= 30000) { lastRefresh = lastRewrite = millis(); refreshLcd(); }
-  else if (lcd && millis() - lastRewrite >= 5000) {
-    lastRewrite = millis();
-    lcd->setCursor(0, 0); lcd->print(fit16(shownTop));
-    lcd->setCursor(0, 1); lcd->print(fit16(shownBottom));
-  }
+  // Re-initialise the bare LCD every 30 s in case power noise knocked it out of sync.
+  // (Otherwise it's only written when the text changes: every extra write is a chance for a glitch.)
+  static unsigned long lastRefresh = 0;
+  if (millis() - lastRefresh >= 30000) { lastRefresh = millis(); refreshLcd(); }
 
   if (millis() - lastScreen >= SCREEN_INTERVAL_MS && screenCount > 0) {
     lastScreen = millis();
