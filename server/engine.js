@@ -313,9 +313,10 @@ function mode() {
   return sensing() ? "demo" : "manual";
 }
 
-// Temperature we go by: the pod's 15-min average, else what the user told us (may be null)
+// Temperature we go by: the pod's 15-min average, else what the user told us (may be null).
+// Also falls back to the user's value when a pod is connected but its sensor isn't reading.
 function currentTemp() {
-  return sensing() ? pod.avgTempC : settings.tempC;
+  return sensing() && pod.avgTempC != null ? pod.avgTempC : settings.tempC;
 }
 
 // The user's setting wins; otherwise detected from the pod's (or the user's) temperature

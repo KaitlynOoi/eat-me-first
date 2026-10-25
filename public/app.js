@@ -90,7 +90,9 @@ function render() {
   $("podGasBox").classList.toggle("hidden", pod.latest?.gas == null && pod.gasBaseline == null);
   const warm = pod.warmMinutes > 0 || pod.sensorProblem;
   $("podWarn").classList.toggle("hidden", !warm);
-  if (pod.sensorProblem) $("podWarn").textContent = "⚠️ Pod is connected, but its temperature sensor isn't reading. Check the sensor's wiring.";
+  if (pod.sensorProblem) $("podWarn").textContent = pod.tempSetting != null
+    ? `⚠️ Pod's temperature sensor isn't reading, so we're using your setting (${pod.tempSetting}°C).`
+    : "⚠️ Pod is connected, but its temperature sensor isn't reading. Set the temperature in ⚙️ Settings for now.";
   else if (warm) $("podWarn").textContent = `⚠️ Fridge above 7°C for ${pod.warmMinutes} min (alert at ${config.warmAlertMin})`;
 
   // Items, grouped by urgency
@@ -205,7 +207,9 @@ function renderSettings() {
   $("ntfyInfo").textContent = config.ntfyTopic
     ? `Install the ntfy app and subscribe to "${config.ntfyTopic}".`
     : "Phone alerts are off on this server (no NTFY_TOPIC set).";
-  $("tempNote").textContent = pod.mode === "pod"
+  $("tempNote").textContent = pod.mode === "pod" && pod.sensorProblem
+    ? "Your pod's temperature sensor isn't reading, so the temperature you enter here is used instead."
+    : pod.mode === "pod"
     ? `Your pod measures this automatically (now ${pod.avgTempC?.toFixed(1)}°C). A saved temperature is only used if the pod goes offline.`
     : "If you know your fridge/freezer/pantry temperature, enter it. Food ages faster when it's warmer. Leave empty for a typical temperature.";
   if (document.activeElement !== $("tempInput")) $("tempInput").value = pod.tempSetting ?? "";
